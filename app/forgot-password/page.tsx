@@ -1,13 +1,11 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/components/ui/Button";
 import { ShieldCheck, Mail, User, ArrowLeft, RefreshCw } from "lucide-react";
-
-import { Suspense } from "react";
 
 const ForgotPasswordForm = () => {
   const [loginId, setLoginId] = useState("");
@@ -54,7 +52,6 @@ const ForgotPasswordForm = () => {
 
   return (
     <div className="relative min-h-[220px]">
-      {/* Forgot Form - Always Rendered but can be blurred */}
       <form
         onSubmit={handleForgotSubmit}
         className={`flex flex-col gap-6 transition-all duration-500 ${token ? "blur-md pointer-events-none scale-95 opacity-40" : "opacity-100"}`}
@@ -104,7 +101,6 @@ const ForgotPasswordForm = () => {
         </Button>
       </form>
 
-      {/* Code Verification Overlay */}
       <AnimatePresence>
         {token && (
           <motion.div
@@ -119,8 +115,7 @@ const ForgotPasswordForm = () => {
                   Enter Verification Code
                 </h3>
                 <p className="text-xs text-muted-foreground font-medium px-4 leading-relaxed">
-                  A 6-digit cryptographic key was sent to your secure
-                  inbox.
+                  A 6-digit cryptographic key was sent to your secure inbox.
                 </p>
               </div>
 
@@ -165,7 +160,6 @@ const ForgotPasswordForm = () => {
 const ForgotPasswordPage = () => {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-background to-background flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Decorative Elements */}
       <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -175,7 +169,6 @@ const ForgotPasswordPage = () => {
         className="w-full max-w-md relative z-10"
       >
         <div className="bg-background/80 backdrop-blur-xl border border-border/50 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] rounded-[2.5rem] p-10 flex flex-col gap-8 relative overflow-hidden">
-          {/* Header */}
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
               <ShieldCheck size={32} strokeWidth={1.5} />
@@ -211,7 +204,5 @@ const ForgotPasswordPage = () => {
     </div>
   );
 };
-
-export default ForgotPasswordPage;
 
 export default ForgotPasswordPage;
