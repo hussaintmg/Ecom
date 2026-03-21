@@ -14,8 +14,7 @@ export async function PUT(
     if (!user || (user.role !== "admin" && user.role !== "owner")) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
-
-    const { id } = await params;
+    await connectDB();
 
     const { name, description, image } = await req.json();
     const updated = await Category.findByIdAndUpdate(
@@ -51,8 +50,7 @@ export async function DELETE(
         { status: 403 },
       );
     }
-
-    const { id } = await params;
+    const user = getUserFromRequest(req);
 
     // Check if category has products
     const category = await Category.findById(id);

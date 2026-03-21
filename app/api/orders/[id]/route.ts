@@ -24,7 +24,6 @@ export async function PUT(
     }
 
     const { status, paymentStatus } = await req.json();
-    const { id } = await params;
     
     const order = await Order.findById(id);
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
