@@ -11,6 +11,7 @@ interface User {
   role: string;
   status: string;
   addresses?: any[];
+  profileImage?: { url: string; publicId: string };
 }
 
 interface AuthContextType {
@@ -34,6 +35,7 @@ interface AuthContextType {
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   allAdmins: () => Promise<any>;
+  updateProfile: (formData: any) => Promise<any>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -219,6 +221,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const updateProfile = async (formData: any) => {
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUser(data.user);
+        return { ok: true };
+      } else {
+        return { ok: false, error: data.error };
+      }
+    } catch (err) {
+      return { ok: false, error: "Network error" };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -234,6 +255,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         allAdmins,
         resetPassword,
         refreshUser: fetchUser,
+        updateProfile,
       }}
     >
       {children}

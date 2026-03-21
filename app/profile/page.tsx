@@ -1,302 +1,248 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import { useAuth } from "@/context/AuthContext";
 import Button from "@/components/ui/Button";
-import { User, Lock, MapPin, Phone, Mail, Edit, Trash2, ShieldCheck, ChevronRight, Save, X, Camera, Package, Globe, Hash, Navigation } from "lucide-react";
+import { User, Mail, MapPin, Lock, Edit2, Plus, Trash2, ShieldCheck, CheckCircle2, Phone, Building2, UserCheck, KeyRound } from "lucide-react";
 import toast from "@/utils/toast";
-import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 const ProfilePage = () => {
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: "", phone: "", currentPassword: "", newPassword: "", profileImage: "" });
+  const { user, updateProfile, refreshUser } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({ name: "", email: "" });
+  const [passData, setPassData] = useState({ old: "", new: "", confirm: "" });
+  
   const [showAddressForm, setShowAddressForm] = useState(false);
-  const [newAddress, setNewAddress] = useState({ address: "", city: "", country: "", phone: "", postalCode: "", preciseLocation: "", isDefault: false });
-  const [uploading, setUploading] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+      address: "", city: "", postalCode: "", country: "Pakistan", phone: "", isDefault: false
+  });
 
-  const fetchProfile = async () => {
-    try {
-      const res = await fetch("/api/auth/profile");
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data);
-        setFormData(prev => ({ ...prev, name: data.name, phone: data.phone || "" }));
-      }
-    } catch (e) { }
-    finally { setLoading(false); }
+  useEffect(() => {
+    if (user) {
+      setFormData({ name: user.name, email: user.email });
+    }
+  }, [user]);
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await updateProfile(formData);
+    if (res.ok) {
+      setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } else {
+      toast.error("Update failed.");
+    }
   };
 
-  useEffect(() => { fetchProfile(); }, []);
-
-  const handleUpdate = async (updateData: any) => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData)
+  const handleChangePassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if(passData.new !== passData.confirm) return toast.error("Passwords do not match");
+      const res = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oldPassword: passData.old, newPassword: passData.new })
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message);
-        setProfile(data.user);
-        setEditingField(null);
-        setFormData(prev => ({ ...prev, currentPassword: "", newPassword: "" }));
-        fetchProfile();
+      if(res.ok) {
+          toast.success("Password secured!");
+          setPassData({ old: "", new: "", confirm: "" });
       } else {
-        toast.error(data.error || "Update failed");
+          const err = await res.json();
+          toast.error(err.error || "Password update failed");
       }
-    } catch (e) { toast.error("Network error"); }
-    finally { setLoading(false); }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUri = reader.result as string;
-      await handleUpdate({ profileImage: dataUri });
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
+  const handleAddAddress = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const res = await fetch("/api/auth/address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(addressForm)
+      });
+      if(res.ok) {
+          toast.success("Address added!");
+          setShowAddressForm(false);
+          setAddressForm({ address: "", city: "", postalCode: "", country: "Pakistan", phone: "", isDefault: false });
+          refreshUser();
+      } else {
+          toast.error("Failed to add address");
+      }
   };
 
-  const handleEditAddress = (addr: any) => {
-      setNewAddress(addr);
-      setShowAddressForm(true);
+  const deleteAddress = async (id: string) => {
+      const res = await fetch(`/api/auth/address?id=${id}`, { method: "DELETE" });
+      if(res.ok) {
+          toast.success("Address removed");
+          refreshUser();
+      } else {
+          toast.error("Failed to delete");
+      }
   };
 
-  if (loading && !profile) return <div className="min-h-screen flex items-center justify-center animate-pulse text-xs font-black uppercase tracking-widest text-muted-foreground">Synchronizing Profile...</div>;
+  const setDefaultAddress = async (id: string) => {
+      const res = await fetch(`/api/auth/address/set-default`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id })
+      });
+      if(res.ok) {
+          toast.success("Default address updated");
+          refreshUser();
+      }
+  };
+
+  if (!user) return <div className="min-h-screen flex items-center justify-center animate-pulse font-black text-muted-foreground uppercase tracking-widest text-xs">Authenticating Vault Access...</div>;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <Navbar />
-      <main className="flex-1 py-12 px-4 md:px-8 container mx-auto flex flex-col gap-12 max-w-5xl pb-32">
-        
-        {/* Profile Header */}
-        <section className="flex flex-col md:flex-row items-center gap-8 bg-card/30 p-8 rounded-[40px] border relative overflow-hidden group shadow-sm">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            
-            <div className="relative w-32 h-32 rounded-full border-4 border-background shadow-2xl overflow-hidden bg-muted group/img">
-               {profile?.profileImage?.url ? (
-                  <img src={profile.profileImage.url} className="w-full h-full object-cover" />
-               ) : <span className="text-4xl font-black text-muted-foreground/30 flex items-center justify-center h-full uppercase">{profile?.name?.[0]}</span>}
-               <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-all cursor-pointer">
-                  <Camera size={24} className="text-white" />
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-               </label>
-               {uploading && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><div className="w-6 h-6 border-b-2 border-white rounded-full animate-spin" /></div>}
-            </div>
-
-            <div className="flex-1 flex flex-col gap-2 text-center md:text-left">
-                <div className="flex items-center justify-center md:justify-start gap-4">
-                  <h1 className="text-4xl font-black tracking-tighter">{profile?.name}</h1>
-                  <span className="text-[10px] bg-primary/10 text-primary px-3 py-1 rounded-full font-black uppercase tracking-widest">{profile?.role}</span>
-                </div>
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-sm text-muted-foreground font-medium">
-                  <span className="flex items-center gap-1.5"><Mail size={14} /> {profile?.email}</span>
-                  {profile?.phone && <span className="flex items-center gap-1.5"><Phone size={14} /> {profile.phone}</span>}
-                  <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-500" /> Account Verified</span>
-                </div>
-            </div>
-            
-            <div className="relative z-50">
-              <Button 
-                variant="outline" 
-                className="rounded-2xl gap-2 font-bold cursor-pointer"
-                onClick={() => router.push("/orders")}
-              >
-                <Package size={18}/> View All Orders
+    <main className="flex-1 py-12 px-4 md:px-8 container mx-auto flex flex-col gap-16 max-w-6xl pb-40">
+      
+      {/* Header Profile Section */}
+      <section className="flex flex-col md:flex-row items-center gap-10 bg-card p-10 rounded-[48px] border shadow-2xl shadow-primary/5 relative overflow-hidden group">
+          <div className="w-32 h-32 rounded-full bg-primary/20 flex items-center justify-center text-4xl font-black text-primary border-4 border-background shadow-xl shrink-0 group-hover:scale-105 transition-transform">
+              {user.profileImage?.url ? <img src={user.profileImage.url} className="w-full h-full object-cover rounded-full" /> : user.name[0].toUpperCase()}
+          </div>
+          <div className="flex flex-col gap-2 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-4">
+                  <h1 className="text-4xl font-black tracking-tighter">{user.name}</h1>
+                  <span className="text-[10px] bg-primary/10 text-primary px-3 py-1 rounded-full font-black uppercase tracking-widest border border-primary/20">{user.role} Member</span>
+              </div>
+              <p className="text-muted-foreground font-medium flex items-center justify-center md:justify-start gap-2 bg-muted/30 px-4 py-1.5 rounded-full w-fit mx-auto md:mx-0 border text-sm"><Mail size={14}/> {user.email}</p>
+          </div>
+          <div className="md:ml-auto flex flex-col gap-3 w-full md:w-auto">
+              <Button onClick={() => setIsEditing(!isEditing)} variant="outline" className="rounded-2xl gap-2 font-bold px-8 h-12 border-2 text-sm uppercase tracking-widest">
+                  {isEditing ? "Cancel Discovery" : "Modify Identity"} <Edit2 size={16}/>
               </Button>
-            </div>
-        </section>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Account Settings */}
-            <section className="flex flex-col gap-6 p-8 rounded-[40px] border bg-card/30">
-                <h3 className="text-xl font-black tracking-tight flex items-center gap-3"><User size={20} className="text-primary"/> Account Details</h3>
-                
-                <div className="flex flex-col gap-8">
-                    {/* Name Change */}
-                    <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Display Name</label>
-                        <div className="flex items-center gap-4">
-                            {editingField === "name" ? (
-                                <>
-                                  <input 
-                                    className="flex-1 bg-muted/30 border rounded-xl px-4 py-2 text-sm font-bold focus:ring-1 focus:ring-primary outline-none" 
-                                    value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                                  />
-                                  <button onClick={() => handleUpdate({name: formData.name})} className="p-2 text-primary hover:bg-primary/5 rounded-lg"><Save size={18}/></button>
-                                  <button onClick={() => setEditingField(null)} className="p-2 text-muted-foreground hover:bg-muted rounded-lg"><X size={18}/></button>
-                                </>
-                            ) : (
-                                <div className="flex-1 flex items-center justify-between group/line">
-                                    <span className="text-lg font-bold tracking-tight">{profile.name}</span>
-                                    <button onClick={() => setEditingField("name")} className="p-2 opacity-0 group-hover/line:opacity-100 transition-opacity text-muted-foreground hover:text-primary"><Edit size={16}/></button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+          <div className="absolute -right-10 -top-10 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none -rotate-12">
+            <User size={240} />
+          </div>
+      </section>
 
-                    {/* Password Section */}
-                    <div className="flex flex-col gap-2 pt-4 border-t">
-                        <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2"><Lock size={12}/> Security Control</h4>
-                        {editingField === "password" ? (
-                             <div className="flex flex-col gap-4 mt-2">
-                                <input 
-                                    type="password" placeholder="Current Password" 
-                                    className="bg-muted/30 border rounded-xl px-4 py-3 text-sm font-bold outline-none"
-                                    value={formData.currentPassword} onChange={e => setFormData({...formData, currentPassword: e.target.value})}
-                                />
-                                <input 
-                                    type="password" placeholder="New Secure Password" 
-                                    className="bg-muted/30 border rounded-xl px-4 py-3 text-sm font-bold outline-none"
-                                    value={formData.newPassword} onChange={e => setFormData({...formData, newPassword: e.target.value})}
-                                />
-                                <div className="flex gap-2">
-                                    <Button size="sm" onClick={() => handleUpdate({currentPassword: formData.currentPassword, newPassword: formData.newPassword})} className="flex-1 rounded-xl">Update Password</Button>
-                                    <Button size="sm" variant="outline" onClick={() => setEditingField(null)} className="rounded-xl">Cancel</Button>
-                                </div>
-                             </div>
-                        ) : (
-                            <button onClick={() => setEditingField("password")} className="flex items-center justify-between p-4 bg-muted/20 rounded-2xl border hover:border-primary/50 transition-all text-sm font-bold opacity-80 group">
-                                <span>Change Account Password</span>
-                                <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </section>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          
+          {/* Identity & Security */}
+          <div className="flex flex-col gap-10">
+              
+              {/* Form 1: Identity */}
+              {isEditing && (
+                  <form onSubmit={handleUpdate} className="flex flex-col gap-6 p-10 rounded-[40px] border bg-card/30 animate-in fade-in slide-in-from-bottom-5">
+                      <h3 className="text-2xl font-black tracking-tight flex items-center gap-3"><UserCheck size={24} className="text-primary"/> Personal Core</h3>
+                      <div className="flex flex-col gap-4">
+                        <label className="flex flex-col gap-2">
+                            <span className="text-xs font-black uppercase tracking-widest text-muted-foreground opacity-50 px-1">Full Name</span>
+                            <input className="rounded-2xl border px-6 py-4 bg-background focus:ring-2 focus:ring-primary/20 transition-all outline-none font-bold" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+                        </label>
+                        <label className="flex flex-col gap-2">
+                            <span className="text-xs font-black uppercase tracking-widest text-muted-foreground opacity-50 px-1">Email Address</span>
+                            <input className="rounded-2xl border px-6 py-4 bg-background focus:ring-2 focus:ring-primary/20 transition-all outline-none font-bold italic opacity-60" value={formData.email} readOnly />
+                        </label>
+                      </div>
+                      <Button type="submit" className="h-14 rounded-2xl font-black text-lg shadow-xl shadow-primary/20 mt-4">Sync Identity Updates</Button>
+                  </form>
+              )}
 
-            {/* Address Management */}
-            <section className="flex flex-col gap-6 p-8 rounded-[40px] border bg-card/30">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-black tracking-tight flex items-center gap-3"><MapPin size={20} className="text-primary"/> Delivery Address</h3>
-                    <button onClick={() => { setShowAddressForm(!showAddressForm); setNewAddress({ address: "", city: "", country: "", phone: "", postalCode: "", preciseLocation: "", isDefault: false }); }} className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline">Add New</button>
-                </div>
+              {/* Form 2: Security */}
+              <form onSubmit={handleChangePassword} className="flex flex-col gap-6 p-10 rounded-[40px] border bg-card/30 group">
+                  <h3 className="text-2xl font-black tracking-tight flex items-center gap-3"><KeyRound size={24} className="text-primary"/> Access Security</h3>
+                  <div className="flex flex-col gap-4">
+                    <label className="flex flex-col gap-2">
+                        <span className="text-xs font-black uppercase tracking-widest text-muted-foreground opacity-50 px-1">Existing Password</span>
+                        <input type="password" placeholder="••••••••" className="rounded-2xl border px-6 py-4 bg-background focus:ring-2 focus:ring-primary/20 transition-all outline-none" value={passData.old} onChange={(e) => setPassData({ ...passData, old: e.target.value })} required />
+                    </label>
+                    <div className="h-[1px] bg-border border-dashed my-2" />
+                    <label className="flex flex-col gap-2">
+                        <span className="text-xs font-black uppercase tracking-widest text-muted-foreground opacity-50 px-1">New Secure Cipher</span>
+                        <input type="password" placeholder="••••••••" className="rounded-2xl border px-6 py-4 bg-background focus:ring-2 focus:ring-primary/20 transition-all outline-none" value={passData.new} onChange={(e) => setPassData({ ...passData, new: e.target.value })} required />
+                    </label>
+                    <label className="flex flex-col gap-2">
+                        <span className="text-xs font-black uppercase tracking-widest text-muted-foreground opacity-50 px-1">Confirm Cipher</span>
+                        <input type="password" placeholder="••••••••" className="rounded-2xl border px-6 py-4 bg-background focus:ring-2 focus:ring-primary/20 transition-all outline-none" value={passData.confirm} onChange={(e) => setPassData({ ...passData, confirm: e.target.value })} required />
+                    </label>
+                  </div>
+                  <Button type="submit" variant="secondary" className="h-14 rounded-2xl font-black text-lg shadow-xl shadow-primary/5 mt-4">Rotate Access Key</Button>
+              </form>
+          </div>
 
-                <div className="flex flex-col gap-4">
-                    {/* List Existing Addresses */}
-                    <div className="flex flex-col gap-3">
-                        {profile.addresses?.length > 0 ? profile.addresses.map((addr: any, idx: number) => (
-                            <div key={idx} className={`p-5 rounded-3xl border transition-all relative group ${addr.isDefault ? "bg-primary/5 border-primary/30 shadow-sm" : "bg-muted/10 hover:border-primary/20"}`}>
-                                {addr.isDefault && <span className="absolute top-4 right-4 text-[8px] font-black uppercase tracking-tighter bg-primary text-white px-2 py-0.5 rounded-full shadow-lg shadow-primary/20">Primary</span>}
-                                
-                                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => handleEditAddress(addr)} className="p-2 bg-background border rounded-lg text-muted-foreground hover:text-primary transition-colors"><Edit size={14}/></button>
-                                    <button onClick={() => handleUpdate({deleteAddressId: addr._id})} className="p-2 bg-background border rounded-lg text-muted-foreground hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                                </div>
+          {/* Logistics Bureau */}
+          <div className="flex flex-col gap-10">
+              <div className="flex flex-col gap-6 p-10 rounded-[40px] border bg-card/30 relative overflow-hidden group">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-2xl font-black tracking-tight flex items-center gap-3"><MapPin size={24} className="text-primary"/> Logistics Bureau</h3>
+                    <button onClick={() => setShowAddressForm(!showAddressForm)} className="p-3 bg-primary/10 text-primary rounded-2xl hover:bg-primary hover:text-white transition-all shadow-lg shadow-primary/5 ring-1 ring-primary/20">
+                        {showAddressForm ? <Trash2 size={20} className="rotate-45" /> : <Plus size={20} />}
+                    </button>
+                  </div>
 
-                                <div className="flex flex-col gap-1 pr-12">
-                                    <p className="text-sm font-black italic tracking-tighter opacity-80 uppercase leading-none">{addr.city}, {addr.country}</p>
-                                    <p className="text-lg font-black tracking-tighter leading-tight">{addr.address}</p>
-                                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mt-1"><Phone size={12}/> {addr.phone}</p>
-                                </div>
-                            </div>
-                        )) : (
-                            <div className="py-12 border-2 border-dashed rounded-3xl flex flex-col items-center gap-3 opacity-30 italic">
-                                <MapPin size={32} />
-                                <span className="text-sm font-bold uppercase tracking-widest">No Addresses Saved</span>
-                            </div>
-                        )}
-                    </div>
+                  {showAddressForm && (
+                      <form onSubmit={handleAddAddress} className="flex flex-col gap-4 p-6 rounded-3xl bg-background border border-primary/20 shadow-2xl animate-in zoom-in-95">
+                         <div className="grid grid-cols-2 gap-4">
+                            <label className="col-span-2">
+                                <span className="text-[10px] font-black uppercase tracking-widest opacity-40 px-1">Primary Address Line</span>
+                                <input className="w-full rounded-xl border px-4 py-3 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" placeholder="123 Street Name" value={addressForm.address} onChange={e=>setAddressForm({...addressForm, address:e.target.value})} required/>
+                            </label>
+                            <label>
+                                <span className="text-[10px] font-black uppercase tracking-widest opacity-40 px-1 text-xs">City Hub</span>
+                                <input className="w-full rounded-xl border px-4 py-3 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" placeholder="e.g. Islamabad" value={addressForm.city} onChange={e=>setAddressForm({...addressForm, city:e.target.value})} required/>
+                            </label>
+                            <label>
+                                <span className="text-[10px] font-black uppercase tracking-widest opacity-40 px-1">Phone Relay</span>
+                                <input className="w-full rounded-xl border px-4 py-3 text-sm mt-1 focus:ring-1 focus:ring-primary outline-none" placeholder="+92 XXX XXXXXXX" value={addressForm.phone} onChange={e=>setAddressForm({...addressForm, phone:e.target.value})} required/>
+                            </label>
+                         </div>
+                         <Button type="submit" className="h-12 rounded-xl font-bold uppercase tracking-widest text-xs mt-2">Deploy Address</Button>
+                      </form>
+                  )}
 
-                    {/* Manual Address Form */}
-                    <AnimatePresence>
-                        {showAddressForm && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-                                className="flex flex-col gap-6 p-6 bg-background rounded-[32px] border shadow-2xl z-20 overflow-hidden"
-                            >
-                                <div className="flex flex-col gap-4">
-                                    <div className="flex flex-col gap-3">
-                                        <div className="relative group">
-                                            <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                            <input 
-                                                type="text" placeholder="House / Building / Street Address" 
-                                                className="w-full bg-muted/30 border rounded-2xl pl-12 pr-4 py-4 text-sm font-bold outline-none focus:ring-1 focus:ring-primary" 
-                                                value={newAddress.address} onChange={e => setNewAddress({...newAddress, address: e.target.value})}
-                                            />
-                                        </div>
+                  <div className="flex flex-col gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                      {user.addresses?.length === 0 ? (
+                          <div className="p-8 text-center flex flex-col items-center gap-3 opacity-30 italic">
+                              <MapPin size={32} />
+                              <p className="text-xs font-bold uppercase tracking-widest">No logistics hubs established.</p>
+                          </div>
+                      ) : (
+                          user.addresses?.map((addr: any, idx: number) => (
+                              <div key={idx} className={`p-6 rounded-3xl border-2 transition-all relative group/addr bg-card ${addr.isDefault ? "border-primary/40 bg-primary/5 shadow-xl shadow-primary/5" : "hover:border-primary/20"}`}>
+                                  {addr.isDefault && (
+                                      <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-primary text-white text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-primary/30">
+                                          <ShieldCheck size={10}/> Default Hub
+                                      </div>
+                                  )}
+                                  <div className="flex flex-col gap-2">
+                                      <div className="flex items-center gap-2 opacity-40">
+                                          <Building2 size={12}/>
+                                          <span className="text-[10px] font-black uppercase tracking-widest">{addr.city}</span>
+                                      </div>
+                                      <p className="font-black text-sm tracking-tight leading-tight">{addr.address}</p>
+                                      <div className="flex items-center gap-4 mt-2">
+                                          <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-1.5"><Phone size={10}/> {addr.phone}</span>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-3 mt-4 pt-4 border-t border-dashed opacity-0 group-hover/addr:opacity-100 transition-opacity">
+                                          {!addr.isDefault && (
+                                              <button onClick={()=>setDefaultAddress(addr._id)} className="text-[9px] font-black uppercase tracking-widest text-primary hover:underline">Establish Default</button>
+                                          )}
+                                          <button onClick={()=>deleteAddress(addr._id)} className="text-[9px] font-black uppercase tracking-widest text-red-500 hover:underline">Decommission Hub</button>
+                                      </div>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="relative group">
-                                                <Navigation size={16} className="absolute left-4 top-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                                <input placeholder="City" className="w-full bg-muted/30 border rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none" value={newAddress.city} onChange={e => setNewAddress({...newAddress, city: e.target.value})} />
-                                            </div>
-                                            <div className="relative group">
-                                                <Globe size={16} className="absolute left-4 top-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                                <input placeholder="Country" className="w-full bg-muted/30 border rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none" value={newAddress.country} onChange={e => setNewAddress({...newAddress, country: e.target.value})} />
-                                            </div>
-                                        </div>
+              <div className="p-10 rounded-[40px] border bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 flex items-center gap-6 border-emerald-500/10 transition-all hover:bg-emerald-500/10">
+                  <div className="p-4 bg-emerald-500/20 rounded-2xl">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <div className="flex flex-col">
+                      <span className="text-xs font-black uppercase tracking-[0.2em]">Verified Premium Status</span>
+                      <p className="text-[11px] font-bold opacity-60 mt-1 leading-relaxed">Your account is fully synchronized with our premium logistics and security protocols.</p>
+                  </div>
+              </div>
+          </div>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="relative group">
-                                                <Phone size={16} className="absolute left-4 top-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                                <input placeholder="Delivery Phone" className="w-full bg-muted/30 border rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none" value={newAddress.phone} onChange={e => setNewAddress({...newAddress, phone: e.target.value})} />
-                                            </div>
-                                            <div className="relative group">
-                                                <Hash size={16} className="absolute left-4 top-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                                <input placeholder="Postal Code" className="w-full bg-muted/30 border rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none" value={newAddress.postalCode} onChange={e => setNewAddress({...newAddress, postalCode: e.target.value})} />
-                                            </div>
-                                        </div>
+      </div>
 
-                                        <div className="relative group">
-                                            <Navigation size={16} className="absolute left-4 top-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                            <textarea 
-                                                placeholder="Precise Location Instructions (e.g. Near Mall, 2nd Floor...)" 
-                                                rows={3}
-                                                className="w-full bg-muted/30 border rounded-xl pl-10 pr-4 py-3 text-sm font-bold outline-none leading-relaxed" 
-                                                value={newAddress.preciseLocation} onChange={e => setNewAddress({...newAddress, preciseLocation: e.target.value})} 
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3 p-1">
-                                    <input type="checkbox" id="default-check" checked={newAddress.isDefault} onChange={e => setNewAddress({...newAddress, isDefault: e.target.checked})} className="w-4 h-4 accent-primary" />
-                                    <label htmlFor="default-check" className="text-xs font-bold uppercase tracking-widest cursor-pointer select-none">Set as primary address</label>
-                                </div>
-                                
-                                <div className="flex gap-2">
-                                    <Button 
-                                        className="flex-1 h-14 rounded-2xl font-black text-lg gap-2 shadow-xl shadow-primary/20" 
-                                        onClick={() => {
-                                            if (!newAddress.address || !newAddress.city || !newAddress.country || !newAddress.phone || !newAddress.postalCode) {
-                                                return toast.error("Please fill all required fields");
-                                            }
-                                            const payload = (newAddress as any)._id 
-                                                ? { updateAddress: newAddress } 
-                                                : { addressObj: newAddress };
-                                            
-                                            handleUpdate(payload).then(() => {
-                                                setShowAddressForm(false);
-                                                setNewAddress({ address: "", city: "", country: "", phone: "", postalCode: "", preciseLocation: "", isDefault: false });
-                                            });
-                                        }}
-                                    >
-                                        {(newAddress as any)._id ? "Update Address" : "Save Address"} <ShieldCheck size={20}/>
-                                    </Button>
-                                    <Button variant="outline" className="rounded-2xl h-14 px-6" onClick={() => setShowAddressForm(false)}><X size={20}/></Button>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            </section>
-        </div>
-
-      </main>
-      <Footer />
-    </div>
+    </main>
   );
 };
 
