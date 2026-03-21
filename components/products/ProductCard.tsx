@@ -46,7 +46,7 @@ import { useCart } from "@/context/CartContext";
   const currentMedia = allMedia[mediaIndex];
   const isVideo = currentMedia?.url?.match(/\.(mp4|webm|ogg)$/i) || currentMedia?.publicId?.includes("video");
 
-  const avgRating = product.reviews?.length > 0
+  const avgRating: any = product.reviews?.length > 0
     ? (product.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / product.reviews.length).toFixed(1)
     : 0;
 
