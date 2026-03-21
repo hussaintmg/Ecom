@@ -2,8 +2,6 @@
 import React from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
 import { Grid, ChevronRight } from "lucide-react";
 import { FadeIn } from "@/components/Animate";
 
@@ -14,7 +12,6 @@ export default function CategoriesPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background selection:bg-primary/20">
-      <Navbar />
 
       <main className="flex-1 container mx-auto px-4 py-20 flex flex-col gap-12">
         <header className="flex flex-col items-center text-center gap-4 max-w-2xl mx-auto">
@@ -64,8 +61,6 @@ export default function CategoriesPage() {
         )}
 
       </main>
-
-      <Footer />
     </div>
   );
 }
