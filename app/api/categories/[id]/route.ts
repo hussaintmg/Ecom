@@ -5,9 +5,10 @@ import { getUserFromRequest } from "@/utils/authHelpers";
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     await connectDB();
     const user = getUserFromRequest(req);
     if (!user || (user.role !== "admin" && user.role !== "owner")) {
@@ -38,9 +39,10 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     await connectDB();
     const user = getUserFromRequest(req);
     if (!user || (user.role !== "admin" && user.role !== "owner")) {

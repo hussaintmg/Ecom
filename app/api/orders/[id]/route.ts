@@ -7,9 +7,10 @@ import { getUserFromRequest } from "@/utils/authHelpers";
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     await connectDB();
     const user = getUserFromRequest(req);
     if (
@@ -72,15 +73,16 @@ export async function PUT(
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     await connectDB();
     const user = getUserFromRequest(req);
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const order = await Order.findById(params.id)
+    const order = await Order.findById(id)
       .populate("user")
       .populate("items.product");
     if (!order)
