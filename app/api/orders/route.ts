@@ -5,6 +5,8 @@ import Product from "@/models/Product";
 import Cart from "@/models/Cart";
 import { getUserFromRequest } from "@/utils/authHelpers";
 import mongoose from "mongoose";
+import Invoice from "@/models/Invoice";
+import StockLog from "@/models/StockLog";
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,9 +46,7 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. Update stock and cleanup cart + Invoice for Stripe
-    // Using explicit model retrieval to prevent registration conflicts
-    const Invoice = mongoose.models.Invoice || mongoose.model("Invoice");
-    const StockLog = mongoose.models.StockLog || mongoose.model("StockLog");
+    // Simplified since models are imported at the top now
 
     for (const item of items) {
       const p = await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } }, { new: true });
