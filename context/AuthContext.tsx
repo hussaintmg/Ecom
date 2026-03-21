@@ -5,6 +5,7 @@ import toast from "@/utils/toast";
 
 interface User {
   id: string;
+  _id?: string;
   name: string;
   email: string;
   role: string;

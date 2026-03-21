@@ -621,7 +621,7 @@ export default function SingleProductPage() {
               {reviews.length > 0 ? (
                 reviews.map((r: any, idx: number) => {
                   const isOwner =
-                    user && (user._id === r.user?._id || user._id === r.user);
+                    user && ((user.id || user._id) === r.user?._id || (user.id || user._id) === r.user);
                   return (
                     <div
                       key={idx}
