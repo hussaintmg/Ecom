@@ -72,6 +72,14 @@ const Sidebar = ({ navItems, role, isOpen = true, onClose }: SidebarProps) => {
     }
   }, [pathname, navItems]);
 
+  // Close sidebar on mobile when route changes
+  useEffect(() => {
+    if (!isDesktop && isOpen && onClose) {
+      onClose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const toggleExpand = (name: string) => {
     setExpandedItems(prev => 
       prev.includes(name) ? prev.filter(i => i !== name) : [...prev, name]

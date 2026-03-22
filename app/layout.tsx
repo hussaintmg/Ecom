@@ -23,6 +23,7 @@ export const metadata: Metadata = {
 
 import { ToastProvider } from "@/components/ui/Toast";
 import LayoutWrapper from "@/components/layout/LayoutWrapper";
+import { OrderProvider } from "@/context/OrderContext";
 
 export default function RootLayout({
   children,
@@ -34,13 +35,15 @@ export default function RootLayout({
       <body className="min-h-full">
         <AuthProvider>
           <CartProvider>
-            <LayoutWrapper>
-              {children}
-            </LayoutWrapper>
-            <Suspense>
-              <MessageToast />
-            </Suspense>
-            <ToastProvider position="top-right" />
+            <OrderProvider>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
+              <Suspense>
+                <MessageToast />
+              </Suspense>
+              <ToastProvider position="top-right" />
+            </OrderProvider>
           </CartProvider>
         </AuthProvider>
       </body>

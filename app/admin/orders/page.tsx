@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import useSWR from "swr";
+import { useOrders } from "@/context/OrderContext";
 import { 
   Package, 
   Truck, 
@@ -13,33 +13,21 @@ import {
   AlertCircle
 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import toast from "@/utils/toast";
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const AdminOrdersPage = () => {
-  const { data: orders, mutate, isLoading } = useSWR("/api/orders", fetcher, { 
-    refreshInterval: 10000 
-  });
+  const { orders, loading, fetchOrders, updateOrder } = useOrders();
+
+  // Admin page typically polls for new orders
+  useEffect(() => {
+     const interval = setInterval(fetchOrders, 10000);
+     return () => clearInterval(interval);
+  }, [fetchOrders]);
 
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
-  const updateStatus = async (id: string, status?: string, paymentStatus?: string) => {
-    try {
-      const res = await fetch(`/api/orders/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, paymentStatus }),
-      });
-      if (res.ok) {
-        toast.success(`Order logistics updated successfully`);
-        mutate();
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.error || "Update failed");
-      }
-    } catch (e) { toast.error("Logistics update failed"); }
+  const handleUpdateStatus = async (id: string, status?: string, paymentStatus?: string) => {
+    await updateOrder(id, { status, paymentStatus });
   };
 
   const filteredOrders = orders?.filter((o: any) => {
@@ -48,7 +36,7 @@ const AdminOrdersPage = () => {
     return matchesFilter && matchesSearch;
   }) || [];
 
-  if (isLoading) return <div className="p-20 text-center animate-pulse font-black text-muted-foreground uppercase tracking-widest text-xs">Accessing Logistics Console...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse font-black text-muted-foreground uppercase tracking-widest text-xs">Accessing Logistics Console...</div>;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -165,7 +153,7 @@ const AdminOrdersPage = () => {
                                 <select 
                                     className="bg-background border shadow-sm rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer hover:border-primary/30 transition-all"
                                     value={o.status || ""}
-                                    onChange={(e) => updateStatus(o._id, e.target.value, undefined)}
+                                    onChange={(e) => handleUpdateStatus(o._id, e.target.value, undefined)}
                                 >
                                     <option value="pending">PENDING</option>
                                     <option value="processing">PROCESS</option>
@@ -181,7 +169,7 @@ const AdminOrdersPage = () => {
                                     <select 
                                         className="bg-background border shadow-sm rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest outline-none cursor-pointer hover:border-primary/30 transition-all h-8"
                                         value={o.paymentStatus || ""}
-                                        onChange={(e) => updateStatus(o._id, undefined, e.target.value)}
+                                        onChange={(e) => handleUpdateStatus(o._id, undefined, e.target.value)}
                                     >
                                         <option value="pending">UNPAID</option>
                                         <option value="paid">PAID</option>

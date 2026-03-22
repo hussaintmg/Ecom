@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/utils/cn";
+import webData from "@/constants/webData.json";
 
 const Navbar = () => {
   const { cart } = useCart();
@@ -57,7 +58,7 @@ const Navbar = () => {
             <Menu size={20} />
           </button>
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight">🛍️ ECOM</span>
+            <span className="text-xl font-bold tracking-tight">🛍️ {webData.websiteName}</span>
           </Link>
         </div>
 
@@ -98,25 +99,27 @@ const Navbar = () => {
                 {user.role?.toLowerCase() === "user" ? (
                   <div className="flex items-center gap-6">
                     <Link
-                      href="/profile"
+                      href="/user/dashboard"
                       className="text-sm font-medium hover:text-primary transition-colors cursor-pointer flex items-center gap-2"
                     >
-                      <User size={16} /> Profile
+                      <LayoutDashboard size={16} /> Dashboard
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-6">
+                    <Link
+                      href="/dashboard"
+                      className="text-sm font-medium hover:text-primary transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <LayoutDashboard size={16} /> Dashboard
                     </Link>
                     <Link
                       href="/orders"
                       className="text-sm font-medium hover:text-primary transition-colors cursor-pointer flex items-center gap-2"
                     >
-                        <Package size={16} /> My Orders
+                      <Package size={16} /> My Orders
                     </Link>
                   </div>
-                ) : (
-                  <Link
-                    href="/dashboard"
-                    className="text-sm font-medium hover:text-primary transition-colors cursor-pointer flex items-center gap-2"
-                  >
-                    <LayoutDashboard size={16} /> Dashboard
-                  </Link>
                 )}
                 <button
                   onClick={async () => {
@@ -163,7 +166,7 @@ const Navbar = () => {
             >
               <div className="p-6 flex items-center justify-between border-b">
                 <span className="text-xl font-bold tracking-tight">
-                  🛍️ ECOM
+                  🛍️ {webData.websiteName}
                 </span>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -204,25 +207,27 @@ const Navbar = () => {
                       {user.role?.toLowerCase() === "user" ? (
                         <>
                           <Link
-                            href="/profile"
+                            href="/user/dashboard"
                             className="flex items-center gap-3 p-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground cursor-pointer"
                           >
-                            <User size={18} /> Profile
+                            <LayoutDashboard size={18} /> Dashboard
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <Link
+                            href="/dashboard"
+                            className="flex items-center gap-3 p-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground cursor-pointer"
+                          >
+                            <LayoutDashboard size={18} /> Dashboard
                           </Link>
                           <Link
-                            href="/orders"
+                            href="/admin/orders"
                             className="flex items-center gap-3 p-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground cursor-pointer"
                           >
                             <Package size={18} /> My Orders
                           </Link>
                         </>
-                      ) : (
-                        <Link
-                          href="/dashboard"
-                          className="flex items-center gap-3 p-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground cursor-pointer"
-                        >
-                          <LayoutDashboard size={18} /> Dashboard
-                        </Link>
                       )}
                       <button
                         onClick={async () => {
@@ -249,7 +254,7 @@ const Navbar = () => {
 
               <div className="p-6 border-t bg-accent/5">
                 <p className="text-[10px] text-center text-muted-foreground font-medium">
-                  Modern ECOM © 2026. Premium Experience.
+                  Modern {webData.websiteName} © {new Date().getFullYear()}. Premium Experience.
                 </p>
               </div>
             </motion.div>

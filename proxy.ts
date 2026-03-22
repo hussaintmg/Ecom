@@ -79,7 +79,7 @@ export async function proxy(req: NextRequest) {
     }
 
     if (user.role === "user") {
-      return NextResponse.next();
+      return NextResponse.redirect(new URL("/user/dashboard", req.url));
     }
 
     return NextResponse.redirect(new URL("/login", req.url));

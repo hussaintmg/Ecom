@@ -8,7 +8,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   
   // Define route prefixes that should NOT show the public Navbar/Footer
-  const noNavFooterPrefixes = ["/admin", "/owner", "/login", "/register", "/forgot-password", "/reset-password"];
+  const noNavFooterPrefixes = ["/admin", "/owner", "/login", "/register", "/forgot-password", "/reset-password", "/user"];
   const isDashboardOrAuth = noNavFooterPrefixes.some(prefix => pathname.startsWith(prefix));
 
   if (isDashboardOrAuth) {

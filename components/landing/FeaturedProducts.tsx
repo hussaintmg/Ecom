@@ -8,7 +8,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const FeaturedProducts = () => {
   const { data: products, error } = useSWR("/api/products", fetcher, { 
-    refreshInterval: 5000 // Auto-refresh every 5 seconds
+    refreshInterval: 5000 
   });
 
   if (error) return <div>Failed to load products.</div>;

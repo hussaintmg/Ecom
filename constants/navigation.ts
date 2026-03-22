@@ -61,3 +61,11 @@ export const PUBLIC_NAV: NavItem[] = [
   { name: "Categories", url: "/categories", icon: Grid },
   { name: "My Account", url: "/profile", icon: UserCheck },
 ];
+
+export const USER_NAV: NavItem[] = [
+  { name: "Overview", url: "/user/dashboard", icon: LayoutDashboard },
+  { name: "My Orders", url: "/user/orders", icon: Package },
+  { name: "Profile Settings", url: "/user/profile", icon: Settings },
+  { name: "My Cart", url: "/user/cart", icon: ShoppingCart },
+  { name: "Back to Store", url: "/", icon: ShoppingBag },
+];

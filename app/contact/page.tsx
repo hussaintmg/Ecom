@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import Button from "@/components/ui/Button";
 import { FadeIn, SlideIn } from "@/components/Animate";
+import webData from "@/constants/webData.json";
 
 const ContactPage = () => {
   const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
@@ -33,9 +34,9 @@ const ContactPage = () => {
               Have a question, feedback, or need some help? We're here for you. Our team will get back to you within 24 hours.
             </p>
             <div className="flex flex-col gap-4 text-sm font-medium">
-              <div className="flex items-center gap-3">📧 support@ecom.premium</div>
-              <div className="flex items-center gap-3">📞 +1 (555) 000-0000</div>
-              <div className="flex items-center gap-3">📍 123 Premium Ave, Ecom City</div>
+              <div className="flex items-center gap-3">📧 {webData.email}</div>
+              <div className="flex items-center gap-3">📞 {webData.phone}</div>
+              <div className="flex items-center gap-3">📍 {webData.address}</div>
             </div>
           </div>
         </FadeIn>
