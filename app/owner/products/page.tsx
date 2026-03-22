@@ -17,6 +17,7 @@ import {
   Package,
   Settings,
   ImageIcon,
+  Search,
 } from "lucide-react";
 
 /* ─── Loading Skeleton ─── */
@@ -52,6 +53,9 @@ const ProductsInner = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -69,37 +73,78 @@ const ProductsInner = () => {
     setRefreshing(false);
   };
 
+  const categories = [
+    "All",
+    ...Array.from(new Set(products.map((p) => p.category?.name).filter(Boolean))),
+  ] as string[];
+
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === "All" || p.category?.name === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   return (
     <div className="flex flex-col gap-8">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {products.length} product{products.length !== 1 ? "s" : ""} total
-          </p>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight">Products</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} total
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className="gap-2"
+            >
+              <RefreshCw
+                size={14}
+                className={refreshing ? "animate-spin" : ""}
+              />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowForm(true)}
+              className="gap-2"
+            >
+              <Plus size={14} /> Add Product
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing || loading}
-            className="gap-2"
-          >
-            <RefreshCw
-              size={14}
-              className={refreshing ? "animate-spin" : ""}
+
+        {/* ── Filters ── */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={16}
             />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setShowForm(true)}
-            className="gap-2"
+            <input
+              type="text"
+              placeholder="Search products by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+            />
+          </div>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-4 py-2 text-sm rounded-xl border bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer min-w-[160px]"
           >
-            <Plus size={14} /> Add Product
-          </Button>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -107,11 +152,26 @@ const ProductsInner = () => {
       {loading ? (
         <Skeleton />
       ) : products.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card border-dashed">
           <Package size={40} className="opacity-30" />
           <p className="text-sm font-medium">No products yet.</p>
           <Button size="sm" onClick={() => setShowForm(true)} className="gap-2">
             <Plus size={14} /> Add Your First Product
+          </Button>
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card border-dashed">
+          <Search size={40} className="opacity-30" />
+          <p className="text-sm font-medium">No products match your filters.</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedCategory("All");
+            }}
+          >
+            Clear Filters
           </Button>
         </div>
       ) : (
@@ -131,7 +191,7 @@ const ProductsInner = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {products.map((p, idx) => (
+                {filteredProducts.map((p, idx) => (
                   <tr
                     key={p._id}
                     className="hover:bg-muted/20 transition-colors"
@@ -223,7 +283,7 @@ const ProductsInner = () => {
 
           {/* ── Mobile Cards ── */}
           <div className="flex flex-col gap-3 md:hidden">
-            {products.map((p, idx) => (
+            {filteredProducts.map((p, idx) => (
               <div
                 key={p._id}
                 className="rounded-2xl border bg-card p-4 shadow-sm flex gap-3"
