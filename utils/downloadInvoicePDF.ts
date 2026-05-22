@@ -68,7 +68,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
   `;
 
   const opt = {
-    margin: [0.5, 0.5, 0.5, 0.5],
+    margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
     filename: `Invoice_${billData.invoiceNo}.pdf`,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: { scale: 2, letterRendering: true },

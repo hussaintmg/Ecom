@@ -18,7 +18,7 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
     if (!billRef.current) return;
     const element = billRef.current;
     const opt = {
-      margin: [0.5, 0.5, 0.5, 0.5],
+      margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
       filename: `Invoice_${billData.invoiceNo}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: { scale: 2, letterRendering: true },
@@ -34,7 +34,10 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
         <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b flex justify-between items-center">
           <h2 className="text-lg font-bold text-white">Generate Bill</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-white hover:text-gray-100">
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full text-white hover:text-gray-100"
+          >
             <X size={20} />
           </button>
         </div>
