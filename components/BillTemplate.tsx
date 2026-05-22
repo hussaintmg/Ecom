@@ -70,6 +70,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
           justifyContent: "space-between",
           marginBottom: "20px",
           fontSize: "14px",
+          position: "relative",
+          transform: "translateY(-8px)",
         }}
       >
         <div>
@@ -95,16 +97,16 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               borderBottom: "1px solid #ddd",
             }}
           >
-            <th style={{ padding: "8px", textAlign: "left" }}>Item</th>
-            <th style={{ padding: "8px", textAlign: "right" }}>Qty</th>
-            <th style={{ padding: "8px", textAlign: "right" }}>Total (PKR)</th>
+            <th style={{ padding: "8px", textAlign: "left", position: "relative", transform: "translateY(-8px)" }}>Item</th>
+            <th style={{ padding: "8px", textAlign: "right", position: "relative", transform: "translateY(-8px)" }}>Qty</th>
+            <th style={{ padding: "8px", textAlign: "right", position: "relative", transform: "translateY(-8px)" }}>Total (PKR)</th>
           </tr>
         </thead>
         <tbody>
           <tr style={{ borderBottom: "1px solid #eee" }}>
-            <td style={{ padding: "8px", textAlign: "left" }}>{productName}</td>
-            <td style={{ padding: "8px", textAlign: "right" }}>{quantity}</td>
-            <td style={{ padding: "8px", textAlign: "right" }}>
+            <td style={{ padding: "8px", textAlign: "left", position: "relative", transform: "translateY(-8px)" }}>{productName}</td>
+            <td style={{ padding: "8px", textAlign: "right", position: "relative", transform: "translateY(-8px)" }}>{quantity}</td>
+            <td style={{ padding: "8px", textAlign: "right", position: "relative", transform: "translateY(-8px)" }}>
               {totalPrice.toLocaleString()}
             </td>
           </tr>

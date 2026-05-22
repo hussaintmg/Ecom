@@ -36,23 +36,23 @@ export const downloadInvoicePDF = async (invoice: any) => {
         <p style="margin: 5px 0; font-size: 12px; color: #555;">Phone: ${billData.shopPhone}</p>
         <h3 style="margin: 10px 0 0;">SALES INVOICE</h3>
       </div>
-      <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px;position:relative;transform:translateY(-8px)">
         <div><strong>Invoice No:</strong> ${billData.invoiceNo}</div>
         <div><strong>Date:</strong> ${billData.date}</div>
       </div>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
         <thead>
           <tr style="background-color: #f2f2f2; border-bottom: 1px solid #ddd;">
-            <th style="padding: 8px; text-align: left;">Item</th>
-            <th style="padding: 8px; text-align: right;">Qty</th>
-            <th style="padding: 8px; text-align: right;">Total (PKR)</th>
+            <th style="padding: 8px; text-align: left;position:relative;transform:translateY(-8px)">Item</th>
+            <th style="padding: 8px; text-align: right;position:relative;transform:translateY(-8px)">Qty</th>
+            <th style="padding: 8px; text-align: right;position:relative;transform:translateY(-8px)">Total (PKR)</th>
           </tr>
         </thead>
         <tbody>
           <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 8px; text-align: left;">${billData.productName}</td>
-            <td style="padding: 8px; text-align: right;">${billData.quantity}</td>
-            <td style="padding: 8px; text-align: right;">${billData.totalPrice.toLocaleString()}</td>
+            <td style="padding: 8px; text-align: left;position:relative;transform:translateY(-8px)">${billData.productName}</td>
+            <td style="padding: 8px; text-align: right;position:relative;transform:translateY(-8px)">${billData.quantity}</td>
+            <td style="padding: 8px; text-align: right;position:relative;transform:translateY(-8px)">${billData.totalPrice.toLocaleString()}</td>
            </tr>
         </tbody>
       </table>
