@@ -18,11 +18,12 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
     if (!billRef.current) return;
     const element = billRef.current;
     const opt = {
-      margin: [0.5, 0.5, 0.5, 0.5],
+      margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
+
       filename: `Invoice_${billData.invoiceNo}.pdf`,
 
       image: {
-        type: "jpeg",
+        type: "jpeg" as "jpeg",
         quality: 0.98,
       },
 
@@ -32,11 +33,11 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
       },
 
       jsPDF: {
-        unit: "in",
-        format: "a4",
-        orientation: "portrait",
+        unit: "in" as "in",
+        format: "a4" as "a4",
+        orientation: "portrait" as "portrait",
       },
-    } as const;
+    };
     await html2pdf().set(opt).from(element).save();
   };
 
