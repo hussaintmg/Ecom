@@ -11,9 +11,9 @@ export const downloadInvoicePDF = async (invoice: any) => {
     totalPrice: invoice.salePrice,
     description: invoice.description,
     sellerName: invoice.soldBy?.name || "Unknown",
-    shopName : "MS Traders",
-    shopAddress : "Shop C15/C17, Quality Godown, Shershah",
-    shopPhone : "+92 333 3424083",
+    shopName: "MS Traders",
+    shopAddress: "Shop C15/C17, Quality Godown, Shershah",
+    shopPhone: "+92 333 3424083",
   };
 
   // Create a temporary div to render the bill
@@ -68,13 +68,26 @@ export const downloadInvoicePDF = async (invoice: any) => {
   `;
 
   const opt = {
-    margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
+    margin: [0.5, 0.5, 0.5, 0.5],
     filename: `Invoice_${billData.invoiceNo}.pdf`,
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, letterRendering: true },
-    jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-  };
-  
+
+    image: {
+      type: "jpeg",
+      quality: 0.98,
+    },
+
+    html2canvas: {
+      scale: 2,
+      letterRendering: true,
+    },
+
+    jsPDF: {
+      unit: "in",
+      format: "a4",
+      orientation: "portrait",
+    },
+  } as const;
+
   await html2pdf().set(opt).from(htmlContent).save();
   document.body.removeChild(div);
 };
