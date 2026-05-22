@@ -30,13 +30,7 @@ const OwnerDashboardSummary = () => {
 
   const stats = [
     { name: "Global Products", value: products?.length || 0, icon: Package },
-    { name: "Live Orders", value: orders?.length || 0, icon: ShoppingBag },
     { name: "Market Categories", value: categories?.length || 0, icon: Grid },
-    {
-      name: "Pending Enquiries",
-      value: enquiries?.length || 0,
-      icon: MessageSquare,
-    },
     { name: "Admins", value: admins?.length || 0, icon: Users2 },
   ];
 

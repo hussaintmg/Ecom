@@ -17,23 +17,6 @@ const Hero = () => {
         >
           Minimalist Style <br /> Maximum Comfort
         </motion.h1>
-        <motion.p 
-          className="mx-auto mb-10 max-w-2xl text-lg text-muted-foreground"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-        >
-          Discover a curated collection of premium products designed for the modern lifestyle. Fast shipping, secure payments, and world-class support.
-        </motion.p>
-        <motion.div 
-          className="flex flex-col justify-center gap-4 sm:flex-row"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-        >
-          <Button size="lg" onClick={() => router.push("/products")} className="rounded-full">Shop Collection</Button>
-          <Button size="lg" variant="outline" onClick={() => router.push("/categories")} className="rounded-full">View Categories</Button>
-        </motion.div>
       </div>
 
       {/* Interactive Floating Background Objects */}

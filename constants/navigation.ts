@@ -28,8 +28,6 @@ export const ADMIN_NAV: NavItem[] = [
   { name: "Manual Sell", url: "/admin/sell", icon: ShoppingCart },
   { name: "Invoices", url: "/admin/invoices", icon: ReceiptText },
   { name: "Categories", url: "/admin/categories", icon: Grid },
-  { name: "Orders", url: "/admin/orders", icon: ShoppingBag },
-  { name: "Enquiries", url: "/admin/enquiries", icon: MessageSquare },
   { name: "Settings", url: "/admin/settings", icon: Settings },
 ];
 
@@ -41,7 +39,6 @@ export const OWNER_NAV: NavItem[] = [
     icon: TrendingUp,
     dropdown: [
       { name: "Sales Reports", url: "/owner/analytics/sales" },
-      { name: "User Traffic", url: "/owner/analytics/traffic" },
     ],
   },
   { name: "Products", url: "/owner/products", icon: Package },
@@ -49,23 +46,16 @@ export const OWNER_NAV: NavItem[] = [
   { name: "Inventory", url: "/owner/inventory", icon: Grid },
   { name: "Manual Sell", url: "/owner/sell", icon: ShoppingCart },
   { name: "Invoices", url: "/owner/invoices", icon: ReceiptText },
-  { name: "Orders", url: "/admin/orders", icon: ShoppingBag },
-  { name: "Enquiries", url: "/owner/enquiries", icon: MessageSquare },
   { name: "Admins", url: "/owner/admins", icon: Users },
   { name: "Setting", url: "/owner/settings", icon: Settings },
 ];
 
 export const PUBLIC_NAV: NavItem[] = [
-  { name: "Storefront", url: "/", icon: ShoppingBag },
-  { name: "All Products", url: "/products", icon: Package },
-  { name: "Categories", url: "/categories", icon: Grid },
   { name: "My Account", url: "/profile", icon: UserCheck },
 ];
 
 export const USER_NAV: NavItem[] = [
   { name: "Overview", url: "/user/dashboard", icon: LayoutDashboard },
-  { name: "My Orders", url: "/user/orders", icon: Package },
   { name: "Profile Settings", url: "/user/profile", icon: Settings },
-  { name: "My Cart", url: "/user/cart", icon: ShoppingCart },
   { name: "Back to Store", url: "/", icon: ShoppingBag },
 ];

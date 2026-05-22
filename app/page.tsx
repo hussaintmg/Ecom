@@ -1,30 +1,106 @@
 import Hero from "@/components/landing/Hero";
-import FeaturedProducts from "@/components/landing/FeaturedProducts";
-import CategoriesPreview from "@/components/landing/CategoriesPreview";
+import Link from "next/link";
 
 export default function Home() {
   return (
     <main className="flex-1">
-      {/* Large, visually appealing Hero section with animations */}
       <Hero />
+      <div className="flex items-center justify-center gap-10 py-6">
+        <Link href="/login">
+          <button
+            className="
+        group
+        relative
+        overflow-hidden
+        rounded-2xl
+        border
+        border-black
+        bg-white
+        px-8
+        py-6
+        text-base
+        font-semibold
+        text-black
+        shadow-md
+        transition-all
+        duration-300
+        hover:-translate-y-1
+        hover:bg-black
+        hover:text-white
+        hover:shadow-2xl
+      "
+          >
+            <span className="relative z-10">Login</span>
 
-      {/* Discount / Sales Banner with animations (Framer Motion) */}
-      <section className="bg-primary py-12 text-center text-primary-foreground">
-        <div className="container mx-auto px-4 md:px-8">
-          <h3 className="text-2xl font-bold tracking-tight">
-            🎉 Opening Season Sale! Up to 50% Off on Selected Items
-          </h3>
-          <p className="mt-2 text-sm text-primary-foreground/80">
-            Offer valid till the end of this month. Don't miss out!
-          </p>
-        </div>
-      </section>
+            <span
+              className="
+          absolute
+          inset-0
+          -translate-x-full
+          bg-black
+          transition-transform
+          duration-300
+          group-hover:translate-x-0
+        "
+            />
+          </button>
+        </Link>
 
-      {/* Popular Products with SWR auto-refresh */}
-      <FeaturedProducts />
+        <Link href="/signup">
+          <button
+            className="
+        group
+        relative
+        overflow-hidden
+        rounded-2xl
+        bg-black
+        px-8
+        py-6
+        text-base
+        font-semibold
+        text-white
+        shadow-lg
+        transition-all
+        duration-300
+        hover:-translate-y-1
+        hover:scale-105
+        hover:shadow-2xl
+      "
+          >
+            <span className="relative z-10">Sign Up</span>
 
-      {/* Categories Preview with smooth scroll/scale animations */}
-      <CategoriesPreview />
+            <span
+              className="
+          absolute
+          inset-0
+          translate-y-full
+          bg-white
+          transition-transform
+          duration-300
+          group-hover:translate-y-0
+        "
+            />
+
+            <span
+              className="
+          absolute
+          inset-0
+          z-10
+          flex
+          items-center
+          justify-center
+          text-black
+          opacity-0
+          transition-opacity
+          duration-300
+          group-hover:opacity-100
+        "
+            >
+              Sign Up
+            </span>
+          </button>
+        </Link>
+      </div>
     </main>
   );
 }

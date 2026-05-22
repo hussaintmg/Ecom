@@ -13,9 +13,7 @@ const DashboardSummary = () => {
 
   const stats = [
     { name: "Total Products", value: products?.length || 0, icon: Package },
-    { name: "Total Orders", value: orders?.length || 0, icon: ShoppingBag },
     { name: "Categories", value: categories?.length || 0, icon: Grid },
-    { name: "Enquiries", value: enquiries?.length || 0, icon: MessageSquare },
   ];
 
   return (

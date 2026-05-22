@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { ProductProvider, useProducts } from "@/context/ProductContext";
 import { InvoiceProvider, useInvoices } from "@/context/InvoiceContext";
 import Button from "@/components/ui/Button";
+import BillModal from "@/components/BillModal";
 import { RefreshCw, ShoppingCart, Search, Package } from "lucide-react";
 
 const SellInner = () => {
@@ -11,18 +12,20 @@ const SellInner = () => {
 
   const [search, setSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
-
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
   const [description, setDescription] = useState("");
   const [selling, setSelling] = useState(false);
+
+  // Bill modal state
+  const [showBillModal, setShowBillModal] = useState(false);
+  const [lastBillData, setLastBillData] = useState<any>(null);
 
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
 
   const selectedProduct = products.find((p) => p._id === selectedProductId);
-
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -30,10 +33,10 @@ const SellInner = () => {
   const handleSell = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
-    
+
     const qty = Number(quantity);
     const price = Number(salePrice);
-    
+
     if (qty <= 0) {
       alert("Quantity must be greater than zero");
       return;
@@ -60,6 +63,20 @@ const SellInner = () => {
     });
 
     if (ok) {
+      // Prepare bill data
+      const invoiceNo = `INV-${Date.now()}`;
+      const date = new Date().toLocaleString();
+      setLastBillData({
+        invoiceNo,
+        date,
+        productName: selectedProduct.name,
+        quantity: qty,
+        totalPrice: price,
+        description,
+      });
+      setShowBillModal(true);
+
+      // Reset form
       setQuantity("");
       setSalePrice("");
       setDescription("");
@@ -74,6 +91,7 @@ const SellInner = () => {
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Header unchanged */}
       <div className="flex items-center gap-3">
         <div className="p-3 bg-primary/10 text-primary rounded-xl">
           <ShoppingCart size={24} />
@@ -86,12 +104,12 @@ const SellInner = () => {
         </div>
       </div>
 
+      {/* Grid layout unchanged */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left: Product Selection */}
+        {/* Left: Product selection (unchanged) */}
         <div className="flex flex-col gap-4">
           <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
             <h2 className="font-bold text-base">Select Product</h2>
-            
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
               <input
@@ -101,7 +119,6 @@ const SellInner = () => {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-
             <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-2">
               {productsLoading ? (
                 <div className="animate-pulse space-y-2">
@@ -123,17 +140,12 @@ const SellInner = () => {
                         : "hover:bg-muted/30"
                     }`}
                   >
-                    {p.images?.[0]?.url ? (
-                      <img src={p.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
-                        <Package size={20} className="text-muted-foreground" />
-                      </div>
-                    )}
+                    <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                      <Package size={20} className="text-muted-foreground" />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-sm truncate">{p.name}</h3>
                       <p className="text-xs text-muted-foreground truncate">
-                        Rs. {p.price.toLocaleString()} •{" "}
                         <span className={p.stock > 0 ? "text-emerald-600 font-bold" : "text-red-500 font-bold"}>
                           {p.stock} in stock
                         </span>
@@ -146,7 +158,7 @@ const SellInner = () => {
           </div>
         </div>
 
-        {/* Right: Sell Details Form */}
+        {/* Right: Sell form (unchanged except we removed auto-price calculation) */}
         <div>
           <form
             onSubmit={handleSell}
@@ -166,7 +178,6 @@ const SellInner = () => {
             {selectedProduct && (
               <div className="mb-2">
                 <p className="text-sm font-semibold">{selectedProduct.name}</p>
-                <p className="text-xs text-muted-foreground">Unit Price: Rs. {selectedProduct.price}</p>
               </div>
             )}
 
@@ -179,21 +190,15 @@ const SellInner = () => {
                   type="number"
                   className={inputClass}
                   value={quantity}
-                  onChange={(e) => {
-                    setQuantity(e.target.value);
-                    if (selectedProduct && Number(e.target.value) > 0) {
-                      setSalePrice((selectedProduct.price * Number(e.target.value)).toString());
-                    }
-                  }}
+                  onChange={(e) => setQuantity(e.target.value)}
                   required
                   min={1}
                   placeholder="e.g. 2"
                 />
               </label>
-
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Total Sale Price *
+                  Total Sale Price (PKR) *
                 </span>
                 <input
                   type="number"
@@ -202,7 +207,7 @@ const SellInner = () => {
                   onChange={(e) => setSalePrice(e.target.value)}
                   required
                   min={1}
-                  placeholder="Rs."
+                  placeholder="e.g. 2500"
                 />
               </label>
             </div>
@@ -231,6 +236,15 @@ const SellInner = () => {
           </form>
         </div>
       </div>
+
+      {/* Bill Modal */}
+      {showBillModal && lastBillData && (
+        <BillModal
+          isOpen={showBillModal}
+          onClose={() => setShowBillModal(false)}
+          billData={lastBillData}
+        />
+      )}
     </div>
   );
 };

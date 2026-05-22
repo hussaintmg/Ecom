@@ -1,12 +1,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ProductProvider,
-  useProducts,
-  Product,
-} from "@/context/ProductContext";
-import { CategoryProvider } from "@/context/CategoryContext";
+import { ProductProvider, useProducts } from "@/context/ProductContext";
+import { CategoryProvider, useCategories } from "@/context/CategoryContext"; // import useCategories
 import ProductForm from "@/components/dashboard/ProductForm";
 import Button from "@/components/ui/Button";
 import {
@@ -20,7 +16,7 @@ import {
   Search,
 } from "lucide-react";
 
-/* ─── Loading Skeleton ─── */
+/* ─── Loading Skeleton (unchanged) ─── */
 const Skeleton = () => (
   <div className="animate-pulse flex flex-col gap-4">
     {[...Array(4)].map((_, i) => (
@@ -29,7 +25,7 @@ const Skeleton = () => (
   </div>
 );
 
-/* ─── Stock Badge ─── */
+/* ─── Stock Badge (unchanged) ─── */
 const StockBadge = ({ stock }: { stock: number }) => (
   <span
     className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -48,6 +44,7 @@ const StockBadge = ({ stock }: { stock: number }) => (
 const ProductsInner = () => {
   const router = useRouter();
   const { products, loading, fetchProducts, deleteProduct } = useProducts();
+  const { categories } = useCategories(); // get all categories from provider
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,14 +70,36 @@ const ProductsInner = () => {
     setRefreshing(false);
   };
 
-  const categories = [
-    "All",
-    ...Array.from(new Set(products.map((p) => p.category?.name).filter(Boolean))),
-  ] as string[];
+  // Build a map from category ID to category name (for unpopulated products)
+  const categoryIdToName = new Map<string, string>();
+  categories.forEach((cat) => {
+    categoryIdToName.set(cat._id, cat.name);
+  });
+
+  // Helper to get the category name reliably
+  const getCategoryName = (product: any): string | null => {
+    if (!product.category) return null;
+    // If category is already populated (object with name)
+    if (typeof product.category === "object" && product.category.name) {
+      return product.category.name;
+    }
+    // If category is an ID string
+    if (typeof product.category === "string") {
+      return categoryIdToName.get(product.category) || null;
+    }
+    return null;
+  };
+
+  // Category options for dropdown: "All" + all unique category names from the CategoryProvider
+  const categoryOptions = ["All", ...categories.map((c) => c.name)];
 
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || p.category?.name === selectedCategory;
+    const matchesSearch = p.name
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+    const productCatName = getCategoryName(p);
+    const matchesCategory =
+      selectedCategory === "All" || productCatName === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
@@ -92,7 +111,8 @@ const ProductsInner = () => {
           <div>
             <h1 className="text-2xl font-black tracking-tight">Products</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} total
+              {filteredProducts.length} product
+              {filteredProducts.length !== 1 ? "s" : ""} total
             </p>
           </div>
           <div className="flex gap-2">
@@ -139,7 +159,7 @@ const ProductsInner = () => {
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="px-4 py-2 text-sm rounded-xl border bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer min-w-[160px]"
           >
-            {categories.map((cat) => (
+            {categoryOptions.map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
               </option>
@@ -148,7 +168,7 @@ const ProductsInner = () => {
         </div>
       </div>
 
-      {/* ── Content ── */}
+      {/* ── Content (rest of the table and cards remain identical, only the category display inside the table needs the same helper) ── */}
       {loading ? (
         <Skeleton />
       ) : products.length === 0 ? (
@@ -176,7 +196,7 @@ const ProductsInner = () => {
         </div>
       ) : (
         <>
-          {/* ── Desktop Table ── */}
+          {/* Desktop Table */}
           <div className="hidden md:block overflow-hidden rounded-2xl border bg-card shadow-sm">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -185,7 +205,6 @@ const ProductsInner = () => {
                   <th className="px-6 py-4">Image</th>
                   <th className="px-6 py-4">Name</th>
                   <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Price</th>
                   <th className="px-6 py-4">Stock</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
@@ -217,10 +236,7 @@ const ProductsInner = () => {
                     </td>
                     <td className="px-6 py-4 font-semibold">{p.name}</td>
                     <td className="px-6 py-4 text-muted-foreground">
-                      {p.category?.name || "—"}
-                    </td>
-                    <td className="px-6 py-4 font-medium">
-                      Rs. {p.price.toLocaleString()}
+                      {getCategoryName(p) || "—"}
                     </td>
                     <td className="px-6 py-4">
                       <StockBadge stock={p.stock} />
@@ -247,10 +263,7 @@ const ProductsInner = () => {
                               onClick={() => handleDelete(p._id)}
                             >
                               {deleting === p._id ? (
-                                <RefreshCw
-                                  size={12}
-                                  className="animate-spin"
-                                />
+                                <RefreshCw size={12} className="animate-spin" />
                               ) : (
                                 "Confirm"
                               )}
@@ -281,7 +294,7 @@ const ProductsInner = () => {
             </table>
           </div>
 
-          {/* ── Mobile Cards ── */}
+          {/* Mobile Cards */}
           <div className="flex flex-col gap-3 md:hidden">
             {filteredProducts.map((p, idx) => (
               <div
@@ -298,15 +311,10 @@ const ProductsInner = () => {
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center">
-                      <ImageIcon
-                        size={18}
-                        className="text-muted-foreground"
-                      />
+                      <ImageIcon size={18} className="text-muted-foreground" />
                     </div>
                   )}
                 </div>
-
-                {/* Info */}
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -316,14 +324,7 @@ const ProductsInner = () => {
                       <span className="font-bold text-sm">{p.name}</span>
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {p.category?.name || "No Category"} •{" "}
-                    <span className="font-semibold text-foreground">
-                      Rs. {p.price.toLocaleString()}
-                    </span>
-                  </div>
                   <StockBadge stock={p.stock} />
-
                   <div className="flex gap-2 pt-2 border-t mt-1">
                     <Button
                       variant="outline"
@@ -371,7 +372,7 @@ const ProductsInner = () => {
         </>
       )}
 
-      {/* ── Modal for Add Product ── */}
+      {/* Modal for Add Product (unchanged) */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-background rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 shadow-2xl relative">

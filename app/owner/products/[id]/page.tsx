@@ -1,24 +1,13 @@
 "use client";
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ProductProvider, useProducts, MediaItem } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import { StockProvider, useStock } from "@/context/StockContext";
 import Button from "@/components/ui/Button";
-import {
-  ArrowLeft,
-  RefreshCw,
-  Plus,
-  Save,
-  Package,
-  Video,
-  X,
-  ImagePlus,
-  TrendingUp,
-  Clock,
-} from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, Save, Package, TrendingUp, Clock, ImagePlus, X } from "lucide-react";
 
-/* ─── Stock History ─── */
+/* ─── Stock History (unchanged) ─── */
 const StockHistory = ({ productId }: { productId: string }) => {
   const { logs, loading, fetchLogs } = useStock();
 
@@ -47,7 +36,7 @@ const StockHistory = ({ productId }: { productId: string }) => {
 
   return (
     <div className="flex flex-col gap-4 mt-2">
-      {/* ── Desktop Table ── */}
+      {/* Desktop Table */}
       <div className="hidden md:block overflow-hidden rounded-xl border bg-card shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -59,86 +48,47 @@ const StockHistory = ({ productId }: { productId: string }) => {
               <th className="px-4 py-3">By</th>
             </tr>
           </thead>
-          <tbody className="divide-y relative">
+          <tbody className="divide-y">
             {logs.map((log) => (
               <tr key={log._id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1 font-bold ${
-                      log.change > 0 ? "text-emerald-600" : "text-red-600"
-                    }`}
-                  >
-                    {log.change > 0 && "+"}
-                    {log.change}
+                  <span className={`inline-flex items-center gap-1 font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {log.change > 0 && "+"}{log.change}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-semibold text-muted-foreground">
-                  {log.resultingStock}
-                </td>
-                <td className="px-4 py-3 line-clamp-2 max-w-[200px]">
-                  {log.description}
-                </td>
+                <td className="px-4 py-3 font-semibold text-muted-foreground">{log.resultingStock}</td>
+                <td className="px-4 py-3 line-clamp-2 max-w-[200px]">{log.description}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                   {new Date(log.createdAt).toLocaleDateString("en-PK", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
+                    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
                   })}
                 </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {log.performedBy?.name || "—"}
-                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{log.performedBy?.name || "—"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* ── Mobile Cards ── */}
+      {/* Mobile Cards */}
       <div className="flex flex-col gap-3 md:hidden">
         {logs.map((log) => (
-          <div
-            key={log._id}
-            className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/20 transition-colors shadow-sm"
-          >
-            <div
-              className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
-                log.change > 0
-                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
-                  : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-              }`}
-            >
+          <div key={log._id} className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/20 transition-colors shadow-sm">
+            <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
+              log.change > 0 ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400" : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
+            }`}>
               <TrendingUp size={14} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`text-sm font-bold ${
-                    log.change > 0 ? "text-emerald-600" : "text-red-600"
-                  }`}
-                >
-                  {log.change > 0 ? "+" : ""}
-                  {log.change}
+                <span className={`text-sm font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {log.change > 0 ? "+" : ""}{log.change}
                 </span>
-                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">
-                  → {log.resultingStock} units
-                </span>
+                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">→ {log.resultingStock} units</span>
               </div>
-              <p className="text-sm text-foreground mt-0.5 break-words">
-                {log.description}
-              </p>
+              <p className="text-sm text-foreground mt-0.5 break-words">{log.description}</p>
               <div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground border-t pt-2">
-                <span>
-                  {new Date(log.createdAt).toLocaleDateString("en-PK", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+                <span>{new Date(log.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                 {log.performedBy && <span>• by {log.performedBy.name}</span>}
               </div>
             </div>
@@ -149,7 +99,7 @@ const StockHistory = ({ productId }: { productId: string }) => {
   );
 };
 
-/* ─── Main Inner ─── */
+/* ─── Main Inner with Image Management ─── */
 const ManageProductInner = ({ productId }: { productId: string }) => {
   const router = useRouter();
   const { fetchProductById, editProduct, uploadMedia, deleteMedia } = useProducts();
@@ -168,15 +118,48 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
   // Edit form
   const [form, setForm] = useState({
     name: "",
-    price: "",
     description: "",
     category: "",
   });
-  const [images, setImages] = useState<MediaItem[]>([]);
-  const [videos, setVideos] = useState<MediaItem[]>([]);
+
+  // Image management
+  const [existingImages, setExistingImages] = useState<MediaItem[]>([]);
+  const [pendingImages, setPendingImages] = useState<MediaItem[]>([]);
   const [uploading, setUploading] = useState(false);
-  const imageInputRef = React.useRef<HTMLInputElement>(null);
-  const videoInputRef = React.useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const fileToDataUri = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    setUploading(true);
+    const newPending: MediaItem[] = [];
+    for (const file of Array.from(files)) {
+      const preview = await fileToDataUri(file);
+      newPending.push({ url: preview, publicId: "", file } as any);
+    }
+    setPendingImages((prev) => [...prev, ...newPending]);
+    setUploading(false);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const removeExistingImage = async (idx: number) => {
+    const item = existingImages[idx];
+    if (item.publicId) await deleteMedia(item.publicId, "image");
+    setExistingImages((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const removePendingImage = (idx: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const loadProduct = async () => {
     setLoading(true);
@@ -185,12 +168,10 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
       setProduct(p);
       setForm({
         name: p.name,
-        price: p.price?.toString() || "",
         description: p.description,
         category: p.category?._id || p.category || "",
       });
-      setImages(p.images || []);
-      setVideos(p.videos || []);
+      setExistingImages(p.images || []);
     }
     setLoading(false);
   };
@@ -200,69 +181,32 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
     loadProduct();
   }, [productId]);
 
-  const fileToDataUri = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-  const isDuplicate = (url: string, list: MediaItem[]) =>
-    list.some((item) => item.url === url);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    setUploading(true);
-    for (const file of Array.from(files)) {
-      const dataUri = await fileToDataUri(file);
-      const result = await uploadMedia(dataUri, "image");
-      if (result && !isDuplicate(result.url, images)) {
-        setImages((prev) => [...prev, result]);
-      }
-    }
-    setUploading(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
-  };
-
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    setUploading(true);
-    for (const file of Array.from(files)) {
-      const dataUri = await fileToDataUri(file);
-      const result = await uploadMedia(dataUri, "video");
-      if (result && !isDuplicate(result.url, videos)) {
-        setVideos((prev) => [...prev, result]);
-      }
-    }
-    setUploading(false);
-    if (videoInputRef.current) videoInputRef.current.value = "";
-  };
-
-  const removeImage = async (idx: number) => {
-    const item = images[idx];
-    if (item.publicId) await deleteMedia(item.publicId, "image");
-    setImages((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const removeVideo = async (idx: number) => {
-    const item = videos[idx];
-    if (item.publicId) await deleteMedia(item.publicId, "video");
-    setVideos((prev) => prev.filter((_, i) => i !== idx));
-  };
-
   const handleSave = async () => {
-    if (!form.name || !form.category || images.length === 0) return;
+    if (!form.name || !form.category) return;
     setSaving(true);
+
+    // Upload pending images
+    const uploadedImages: MediaItem[] = [];
+    for (const p of pendingImages) {
+      if (!p?.file) continue;
+      const dataUri = await fileToDataUri(p?.file);
+      const res = await uploadMedia(dataUri, "image");
+      if (res) uploadedImages.push(res);
+    }
+
+    const finalImages = [...existingImages, ...uploadedImages];
+
     const ok = await editProduct(productId, {
-      ...form,
-      price: Number(form.price),
-      images,
-      videos,
+      name: form.name,
+      description: form.description,
+      category: form.category,
+      images: finalImages,
     });
-    if (ok) await loadProduct();
+
+    if (ok) {
+      await loadProduct(); // reload product with updated images
+      setPendingImages([]); // clear pending queue
+    }
     setSaving(false);
   };
 
@@ -307,197 +251,103 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* ── Back + Title ── */}
+      {/* Back + Title */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => router.back()}
-          className="p-2 rounded-xl border hover:bg-muted transition-colors"
-        >
+        <button onClick={() => router.back()} className="p-2 rounded-xl border hover:bg-muted transition-colors">
           <ArrowLeft size={16} />
         </button>
         <div>
           <h1 className="text-2xl font-black tracking-tight">{product.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {product.category?.name} • Rs. {product.price.toLocaleString()} •{" "}
-            <span
-              className={`font-bold ${
-                product.stock > 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
+            {product.category?.name} •{" "}
+            <span className={`font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}>
               {product.stock} in stock
             </span>
           </p>
         </div>
       </div>
 
-      {/* ── Two Column Layout ── */}
+      {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left: Product Details */}
         <div className="flex flex-col gap-6">
-          {/* Edit Form */}
           <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
             <h2 className="font-bold text-base">Product Details</h2>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Name
-              </span>
-              <input
-                className={inputClass}
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Name *</span>
+              <input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Price (PKR)
-                </span>
-                <input
-                  type="number"
-                  className={inputClass}
-                  value={form.price}
-                  onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  min={0}
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Category
-                </span>
-                <select
-                  className={inputClass}
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                >
-                  <option value="">Select</option>
-                  {categories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Description
-              </span>
-              <textarea
-                className={`${inputClass} min-h-[80px] resize-y`}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</span>
+              <select className={inputClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <option value="">Select Category</option>
+                {categories.map((c) => (
+                  <option key={c._id} value={c._id}>{c.name}</option>
+                ))}
+              </select>
             </label>
 
-            {/* Images */}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</span>
+              <textarea className={`${inputClass} min-h-20 resize-y`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </label>
+
+            {/* Image Management Section */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Images
-                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product Images</span>
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  disabled={uploading}
+                  disabled={uploading || saving}
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer"
                 >
-                  <ImagePlus size={14} />
-                  {uploading ? "Uploading..." : "Add"}
+                  <ImagePlus size={14} /> Add Images
                 </button>
               </div>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-              <div className="flex flex-wrap gap-2">
-                {images.map((img, idx) => (
-                  <div
-                    key={`img-${idx}`}
-                    className="relative w-16 h-16 rounded-lg overflow-hidden border bg-muted group"
-                  >
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={8} className="text-white" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Videos */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Videos
-                </span>
-                <button
-                  type="button"
-                  onClick={() => videoInputRef.current?.click()}
-                  disabled={uploading}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer"
-                >
-                  <Video size={14} />
-                  {uploading ? "Uploading..." : "Add"}
-                </button>
-              </div>
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                multiple
-                className="hidden"
-                onChange={handleVideoUpload}
-              />
-              <div className="flex flex-wrap gap-2">
-                {videos.map((vid, idx) => (
-                  <div
-                    key={`vid-${idx}`}
-                    className="relative w-24 h-16 rounded-lg overflow-hidden border bg-muted group"
-                  >
-                    <video src={vid.url} className="w-full h-full object-cover" muted />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <Video size={14} className="text-white" />
+              <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
+              {(existingImages.length > 0 || pendingImages.length > 0) && (
+                <div className="flex flex-wrap gap-2">
+                  {existingImages.map((img, idx) => (
+                    <div key={`existing-${idx}`} className="relative w-20 h-20 rounded-lg overflow-hidden border bg-muted group">
+                      <img src={img.url} className="w-full h-full object-cover" alt="product" />
+                      <button
+                        type="button"
+                        onClick={() => removeExistingImage(idx)}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={10} className="text-white" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeVideo(idx)}
-                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={8} className="text-white" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                  {pendingImages.map((img, idx) => (
+                    <div key={`pending-${idx}`} className="relative w-20 h-20 rounded-lg overflow-hidden border border-dashed border-primary bg-primary/5 group">
+                      <img src={img.url} className="w-full h-full object-cover opacity-80" alt="pending" />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="text-[10px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full shadow-sm">New</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePendingImage(idx)}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={10} className="text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {uploading && (
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <RefreshCw size={14} className="animate-spin" /> Uploading to cloud...
+                </div>
+              )}
             </div>
 
-            {uploading && (
-              <div className="flex items-center gap-2 text-sm text-primary">
-                <RefreshCw size={14} className="animate-spin" />
-                Uploading...
-              </div>
-            )}
-
-            <Button
-              onClick={handleSave}
-              disabled={saving || uploading}
-              className="w-full gap-2"
-            >
-              {saving ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Save size={14} />
-              )}
+            <Button onClick={handleSave} disabled={saving || uploading} className="w-full gap-2">
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
               Save Changes
             </Button>
           </div>
@@ -505,62 +355,25 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
 
         {/* Right: Stock Management */}
         <div className="flex flex-col gap-6">
-          {/* Stock Adjust */}
           <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base">Add Stock</h2>
-              <span
-                className={`text-2xl font-black ${
-                  product.stock > 0 ? "text-emerald-600" : "text-red-600"
-                }`}
-              >
-                {product.stock}
-              </span>
+              <span className={`text-2xl font-black ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}>{product.stock}</span>
             </div>
-
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Quantity to Add *
-              </span>
-              <input
-                type="number"
-                className={inputClass}
-                value={stockChange}
-                onChange={(e) => setStockChange(e.target.value)}
-                min={1}
-                placeholder="e.g. 50"
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity to Add *</span>
+              <input type="number" className={inputClass} value={stockChange} onChange={(e) => setStockChange(e.target.value)} min={1} placeholder="e.g. 50" />
             </label>
-
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Description *
-              </span>
-              <textarea
-                className={`${inputClass} min-h-[70px] resize-y`}
-                value={stockDesc}
-                onChange={(e) => setStockDesc(e.target.value)}
-                placeholder="e.g. New shipment from wholesale..."
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</span>
+              <textarea className={`${inputClass} min-h-17.5 resize-y`} value={stockDesc} onChange={(e) => setStockDesc(e.target.value)} placeholder="e.g. New shipment from wholesale..." />
             </label>
-
-            <Button
-              onClick={handleStockUpdate}
-              disabled={
-                stockLoading || !stockChange || Number(stockChange) <= 0 || !stockDesc.trim()
-              }
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full"
-            >
-              {stockLoading ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Plus size={14} />
-              )}
+            <Button onClick={handleStockUpdate} disabled={stockLoading || !stockChange || Number(stockChange) <= 0 || !stockDesc.trim()} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full">
+              {stockLoading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
               Confirm Addition
             </Button>
           </div>
 
-          {/* Stock History */}
           <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
             <h2 className="font-bold text-base">Stock Updates History</h2>
             <StockHistory productId={productId} />
@@ -568,41 +381,39 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
         </div>
       </div>
 
-      {/* ── Reviews Management ── */}
+      {/* Reviews Management */}
       <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm w-full">
-         <h2 className="font-bold text-base">Customer Reviews</h2>
-         {product.reviews && product.reviews.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {product.reviews.map((r: any, idx: number) => (
-                  <div key={idx} className="p-4 border rounded-xl bg-background shadow-xs flex flex-col gap-3 relative">
-                     <div className="flex justify-between items-start border-b pb-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center font-black text-xs text-primary">
-                                {r.user?.profileImage?.url ? <img src={r.user.profileImage.url} className="w-full h-full object-cover" /> : (r.user?.name ? r.user.name[0].toUpperCase() : "U")}
-                            </div>
-                            <div className="flex flex-col">
-                               <span className="text-xs font-bold leading-none">{r.user?.name || "Unknown User"}</span>
-                               <span className="text-[10px] text-muted-foreground mt-0.5">{new Date(r.createdAt).toLocaleDateString()}</span>
-                            </div>
-                        </div>
-                        <div className="text-amber-500 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md tracking-widest">{r.rating}/5 Stars</div>
-                     </div>
-                     <p className="text-sm font-medium leading-relaxed">"{r.comment}"</p>
+        <h2 className="font-bold text-base">Customer Reviews</h2>
+        {product.reviews && product.reviews.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {product.reviews.map((r: any, idx: number) => (
+              <div key={idx} className="p-4 border rounded-xl bg-background shadow-xs flex flex-col gap-3 relative">
+                <div className="flex justify-between items-start border-b pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center font-black text-xs text-primary">
+                      {r.user?.profileImage?.url ? <img src={r.user.profileImage.url} className="w-full h-full object-cover" /> : (r.user?.name ? r.user.name[0].toUpperCase() : "U")}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold leading-none">{r.user?.name || "Unknown User"}</span>
+                      <span className="text-[10px] text-muted-foreground mt-0.5">{new Date(r.createdAt).toLocaleDateString()}</span>
+                    </div>
                   </div>
-               ))}
-            </div>
-         ) : (
-            <div className="text-sm text-muted-foreground p-8 text-center border border-dashed rounded-xl">No reviews have been posted yet.</div>
-         )}
+                  <div className="text-amber-500 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md tracking-widest">{r.rating}/5 Stars</div>
+                </div>
+                <p className="text-sm font-medium leading-relaxed">"{r.comment}"</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground p-8 text-center border border-dashed rounded-xl">No reviews have been posted yet.</div>
+        )}
       </div>
-      
     </div>
   );
 };
 
 const ManageProductPage = ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = use(params);
-
   return (
     <ProductProvider>
       <CategoryProvider>

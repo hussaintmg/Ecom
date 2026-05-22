@@ -9,13 +9,17 @@ export async function GET(req: NextRequest) {
     await connectDB();
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
-    const sort = searchParams.get("sort");
+    const sort = searchParams.get("sort"); // e.g. "name-asc", "name-desc", "newest", "oldest"
+
     let query: any = {};
     if (category) query.category = category;
 
+    // Default sort by newest first (createdAt descending)
     let sortOption: any = { createdAt: -1 };
-    if (sort === "price-asc") sortOption = { price: 1 };
-    else if (sort === "price-desc") sortOption = { price: -1 };
+    if (sort === "name-asc") sortOption = { name: 1 };
+    else if (sort === "name-desc") sortOption = { name: -1 };
+    else if (sort === "oldest") sortOption = { createdAt: 1 };
+    // "newest" is the default, so no extra condition
 
     const products = await Product.find(query)
       .populate("category")
@@ -36,6 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await req.json();
+    // No price field expected
     const product = await Product.create(data);
 
     // Add product to category's products array
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(product);
   } catch (error: any) {
-    console.log(error)
+    console.log(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

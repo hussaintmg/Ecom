@@ -4,7 +4,8 @@ import { InvoiceProvider, useInvoices } from "@/context/InvoiceContext";
 import { ProductProvider, useProducts } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
-import { RefreshCw, ReceiptText, Filter, CalendarDays, Search } from "lucide-react";
+import { RefreshCw, ReceiptText, Filter, CalendarDays, Search, Download } from "lucide-react";
+import { downloadInvoicePDF } from "@/utils/downloadInvoicePDF";
 
 const InvoicesInner = () => {
   const { invoices, loading, fetchInvoices } = useInvoices();
@@ -17,6 +18,7 @@ const InvoicesInner = () => {
   const [filterEnd, setFilterEnd] = useState("");
 
   const [refreshing, setRefreshing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -52,10 +54,17 @@ const InvoicesInner = () => {
     setRefreshing(false);
   };
 
+  const handleDownload = async (invoice: any) => {
+    setDownloadingId(invoice._id);
+    await downloadInvoicePDF(invoice);
+    setDownloadingId(null);
+  };
+
   const inputClass = "w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 transition-colors";
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Header - unchanged */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-primary/10 text-primary rounded-xl">
@@ -68,26 +77,18 @@ const InvoicesInner = () => {
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing || loading}
-          className="gap-2"
-        >
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing || loading} className="gap-2">
           <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
           Refresh
         </Button>
       </div>
 
-      {/* Filters */}
+      {/* Filters - unchanged */}
       <div className="rounded-2xl border bg-card p-5 shadow-sm flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-sm flex items-center gap-1.5"><Filter size={14} /> Filter Invoices</h3>
           {(filterProduct || filterCategory || filterStart || filterEnd) && (
-            <button onClick={clearFilters} className="text-xs font-bold text-red-500 hover:underline">
-              Clear All
-            </button>
+            <button onClick={clearFilters} className="text-xs font-bold text-red-500 hover:underline">Clear All</button>
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -121,9 +122,7 @@ const InvoicesInner = () => {
           </label>
         </div>
         <div className="flex justify-end pt-2">
-          <Button size="sm" onClick={handleApplyFilters} className="gap-2">
-            <Search size={14} /> Apply Filters
-          </Button>
+          <Button size="sm" onClick={handleApplyFilters} className="gap-2"><Search size={14} /> Apply Filters</Button>
         </div>
       </div>
 
@@ -147,6 +146,7 @@ const InvoicesInner = () => {
                   <th className="px-5 py-3 bg-primary/5">Total Price</th>
                   <th className="px-5 py-3">Admin Memo</th>
                   <th className="px-5 py-3 text-right">Sold By</th>
+                  <th className="px-5 py-3 text-center">Bill</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -174,6 +174,20 @@ const InvoicesInner = () => {
                       {inv.soldBy?.name || "Unknown"}
                       <div className="text-[10px] text-muted-foreground capitalize">{inv.soldBy?.role || "Staff"}</div>
                     </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        onClick={() => handleDownload(inv)}
+                        disabled={downloadingId === inv._id}
+                        className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                        title="Download Bill"
+                      >
+                        {downloadingId === inv._id ? (
+                          <RefreshCw size={14} className="animate-spin" />
+                        ) : (
+                          <Download size={14} />
+                        )}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -199,14 +213,27 @@ const InvoicesInner = () => {
                 <div className="text-xs text-foreground bg-muted/40 p-2 rounded-lg border">
                   {inv.description}
                 </div>
-                <div className="flex justify-between items-end border-t pt-2 mt-1">
+                <div className="flex justify-between items-center border-t pt-2 mt-1">
                   <div className="text-[10px] text-muted-foreground">
                     {new Date(inv.createdAt).toLocaleDateString("en-US", {
                       day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
                     })}
                   </div>
-                  <div className="text-[10px] font-medium text-right bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                    By {inv.soldBy?.name || "Unknown"}
+                  <div className="flex gap-2 items-center">
+                    <div className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      By {inv.soldBy?.name || "Unknown"}
+                    </div>
+                    <button
+                      onClick={() => handleDownload(inv)}
+                      disabled={downloadingId === inv._id}
+                      className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                    >
+                      {downloadingId === inv._id ? (
+                        <RefreshCw size={12} className="animate-spin" />
+                      ) : (
+                        <Download size={12} />
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
