@@ -5,6 +5,7 @@ import toast from "@/utils/toast";
 export interface MediaItem {
   url: string;
   publicId: string;
+  file?: File;
 }
 
 export interface Product {
