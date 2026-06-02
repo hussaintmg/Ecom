@@ -34,7 +34,7 @@ const InvoicesInner = () => {
   }, [fetchProducts, fetchCategories, fetchInvoices]);
 
   const handleApplyFilters = () => {
-    fetchInvoices({
+    fetchInvoices(1, "", {
       product: filterProduct,
       category: filterCategory,
       startDate: filterStart,
@@ -47,12 +47,12 @@ const InvoicesInner = () => {
     setFilterCategory("");
     setFilterStart("");
     setFilterEnd("");
-    fetchInvoices({});
+    fetchInvoices(1, "", {});
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchInvoices({
+    await fetchInvoices(1, "", {
       product: filterProduct,
       category: filterCategory,
       startDate: filterStart,
