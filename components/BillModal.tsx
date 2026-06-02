@@ -130,7 +130,7 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
             <Button 
               onClick={handleDownloadPDF} 
               className="gap-2 text-white"
-              variant="default"
+              variant="primary"
               disabled={downloading || printing}
             >
               {downloading ? (
