@@ -23,6 +23,29 @@ const InventoryInner = () => {
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
   const [localCategory, setLocalCategory] = useState(selectedCategory || "All");
+  const [totalStock, setTotalStock] = useState(0);
+  const [stockLoading, setStockLoading] = useState(false);
+
+  // Fetch total stock
+  const fetchTotalStock = useCallback(async (search: string, category: string) => {
+    try {
+      setStockLoading(true);
+      const params = new URLSearchParams();
+      if (search) params.append("search", search);
+      if (category && category !== "All") params.append("category", category);
+      
+      const response = await fetch(`/api/products/stock-total?${params.toString()}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setTotalStock(data.totalStock);
+      }
+    } catch (error) {
+      console.error("Error fetching total stock:", error);
+    } finally {
+      setStockLoading(false);
+    }
+  }, []);
 
   // Fetch products when dependencies change
   useEffect(() => {
@@ -34,15 +57,17 @@ const InventoryInner = () => {
         setSelectedCategory(localCategory);
       }
       fetchProducts(currentPage, localSearch, localCategory);
+      fetchTotalStock(localSearch, localCategory);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [currentPage, localSearch, localCategory]);
+  }, [currentPage, localSearch, localCategory, fetchTotalStock, fetchProducts, setSearchQuery, setSelectedCategory]);
 
   // Initial fetch
   useEffect(() => {
     fetchProducts(1, "", "All");
-  }, []);
+    fetchTotalStock("", "All");
+  }, [fetchProducts, fetchTotalStock]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -278,6 +303,43 @@ const InventoryInner = () => {
                 </div>
               </div>
             )}
+
+            {/* Total Stock Summary */}
+            <div className="mt-6 pt-4 border-t">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/30 p-6 border border-emerald-200 dark:border-emerald-800">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                    Total Filtered Stock
+                  </p>
+                  {stockLoading ? (
+                    <div className="h-10 mt-2 bg-emerald-200 dark:bg-emerald-800 rounded animate-pulse" />
+                  ) : (
+                    <p className="text-4xl font-black text-emerald-700 dark:text-emerald-400 mt-2">
+                      {totalStock.toLocaleString()}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-2">
+                    {localSearch ? `From search: "${localSearch}"` : localCategory !== "All" ? `Category: ${localCategory}` : "All products"}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/30 p-6 border border-blue-200 dark:border-blue-800">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-blue-700 dark:text-blue-400">
+                    Matching Products
+                  </p>
+                  {stockLoading ? (
+                    <div className="h-10 mt-2 bg-blue-200 dark:bg-blue-800 rounded animate-pulse" />
+                  ) : (
+                    <p className="text-4xl font-black text-blue-700 dark:text-blue-400 mt-2">
+                      {totalProducts}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-blue-600 dark:text-blue-500 mt-2">
+                    Products found
+                  </p>
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>
