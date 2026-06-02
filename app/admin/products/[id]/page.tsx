@@ -169,7 +169,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
       setForm({
         name: p.name,
         description: p.description,
-        category: p.category?._id || p.category || "",
+        category: typeof p.category === 'object' ? p.category._id : (p.category || ""),
       });
       setExistingImages(p.images || []);
     }
