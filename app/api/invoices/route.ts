@@ -24,18 +24,43 @@ export async function GET(req: NextRequest) {
 
     let query: any = {};
     
-    // Search by product name
+    // Search by product name (legacy and nested list)
     if (search) {
       const products = await Product.find({ 
         name: { $regex: search, $options: "i" } 
       }).select("_id");
       
       const productIds = products.map(p => p._id);
-      query.product = { $in: productIds };
+      query.$or = [
+        { product: { $in: productIds } },
+        { "products.product": { $in: productIds } }
+      ];
     }
     
-    if (product) query.product = product;
-    if (category) query.category = category;
+    if (product) {
+      query.$or = [
+        { product: product },
+        { "products.product": product }
+      ];
+    }
+
+    if (category) {
+      const categoryFilter = {
+        $or: [
+          { category: category },
+          { "products.category": category }
+        ]
+      };
+      if (query.$or) {
+        query.$and = [
+          { $or: query.$or },
+          categoryFilter
+        ];
+        delete query.$or;
+      } else {
+        query.$or = categoryFilter.$or;
+      }
+    }
 
     if (startDate || endDate) {
       query.createdAt = {};
@@ -51,22 +76,41 @@ export async function GET(req: NextRequest) {
     const totalInvoices = await Invoice.countDocuments(query);
     const totalPages = Math.ceil(totalInvoices / limit);
 
-    // Get invoices with pagination
+    // Get invoices with pagination and populate legacy + nested properties
     const invoices = await Invoice.find(query)
       .populate("product", "name price images stock description")
       .populate("category", "name")
+      .populate("products.product", "name price images stock description")
+      .populate("products.category", "name")
       .populate("soldBy", "name email role")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
+    // Standardize all invoices to have the products array and totalAmount
+    const formattedInvoices = invoices.map(inv => {
+      const obj = inv.toObject ? inv.toObject() : inv;
+      if (!obj.products || obj.products.length === 0) {
+        obj.products = [{
+          product: obj.product,
+          category: obj.category,
+          quantity: obj.quantity,
+          salePrice: obj.salePrice,
+          description: obj.description || "No description",
+          _id: obj._id,
+        }];
+        obj.totalAmount = obj.salePrice;
+      }
+      return obj;
+    });
+
     return NextResponse.json({
       success: true,
-      invoices,
+      invoices: formattedInvoices,
       totalInvoices,
       totalPages,
       currentPage: page,
-      hasMore: skip + invoices.length < totalInvoices,
+      hasMore: skip + formattedInvoices.length < totalInvoices,
     });
     
   } catch (error: any) {
@@ -91,71 +135,137 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { productId, quantity, salePrice, description } = await req.json();
+    const body = await req.json();
+    const { productId, quantity, salePrice, description, products } = body;
 
-    if (!productId || !quantity || !salePrice || !description) {
+    // Support both single item input and products array
+    const items = products || [
+      { productId, quantity, salePrice, description }
+    ];
+
+    if (!items || items.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Product, quantity, sale price, and description are required" },
+        { success: false, error: "No products provided for manual sell" },
         { status: 400 }
       );
     }
 
-    if (quantity <= 0) {
-      return NextResponse.json(
-        { success: false, error: "Sell quantity must be positive" },
-        { status: 400 }
-      );
+    // 1. Validate all products and stock limits first
+    const validatedItems = [];
+    let calculatedTotalAmount = 0;
+
+    for (const item of items) {
+      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice, description: itemDesc } = item;
+
+      if (!itemProductId || !itemQty || !itemPrice || !itemDesc) {
+        return NextResponse.json(
+          { success: false, error: "Product, quantity, sale price, and description are required for all items" },
+          { status: 400 }
+        );
+      }
+
+      const qty = Number(itemQty);
+      const price = Number(itemPrice);
+
+      if (qty <= 0) {
+        return NextResponse.json(
+          { success: false, error: "Sell quantity must be greater than zero" },
+          { status: 400 }
+        );
+      }
+
+      if (price <= 0) {
+        return NextResponse.json(
+          { success: false, error: "Total sale price must be greater than zero" },
+          { status: 400 }
+        );
+      }
+
+      const product = await Product.findById(itemProductId);
+      if (!product) {
+        return NextResponse.json(
+          { success: false, error: `Product not found with ID: ${itemProductId}` },
+          { status: 404 }
+        );
+      }
+
+      if (product.stock < qty) {
+        return NextResponse.json(
+          { success: false, error: `Insufficient stock for ${product.name}! Only ${product.stock} available.` },
+          { status: 400 }
+        );
+      }
+
+      validatedItems.push({
+        productObj: product,
+        qty,
+        price,
+        description: itemDesc,
+      });
+
+      calculatedTotalAmount += price;
     }
 
-    const product = await Product.findById(productId);
-    if (!product) {
-      return NextResponse.json(
-        { success: false, error: "Product not found" },
-        { status: 404 }
-      );
+    // 2. Perform stock deductions, create StockLogs, and collect invoice products
+    const invoiceItems = [];
+
+    for (const validated of validatedItems) {
+      const { productObj, qty, price, description: itemDesc } = validated;
+
+      // Deduct stock
+      const newStock = productObj.stock - qty;
+      productObj.stock = newStock;
+      await productObj.save();
+
+      // Log Stock change
+      await StockLog.create({
+        product: productObj._id,
+        change: -qty,
+        description: `Manual Sell: ${itemDesc}`,
+        resultingStock: newStock,
+        performedBy: user.id,
+      });
+
+      // Prepare nested invoice array element
+      invoiceItems.push({
+        product: productObj._id,
+        category: productObj.category,
+        quantity: qty,
+        salePrice: price,
+        description: itemDesc,
+      });
     }
 
-    if (product.stock < quantity) {
-      return NextResponse.json(
-        { success: false, error: `Insufficient stock! Only ${product.stock} available.` },
-        { status: 400 }
-      );
-    }
-
-    // Process logic correctly:
-    // 1. Reduce stock
-    const newStock = product.stock - quantity;
-    product.stock = newStock;
-    await product.save();
-
-    // 2. Add StockLog
-    await StockLog.create({
-      product: product._id,
-      change: -quantity,
-      description: `Manual Sell: ${description}`,
-      resultingStock: newStock,
-      performedBy: user.id,
-    });
-
-    // 3. Create Invoice
+    // 3. Create Multi-Product Invoice
     const invoice = await Invoice.create({
-      product: product._id,
-      category: product.category,
-      quantity,
-      salePrice,
-      description,
+      products: invoiceItems,
+      totalAmount: calculatedTotalAmount,
       soldBy: user.id,
     });
 
-    // Populate the created invoice
+    // Populate the created invoice details
     const populatedInvoice = await Invoice.findById(invoice._id)
-      .populate("product", "name price images stock")
-      .populate("category", "name")
+      .populate("products.product", "name price images stock")
+      .populate("products.category", "name")
       .populate("soldBy", "name email role");
+
+    // Standardize returned object
+    const returnObj = populatedInvoice.toObject ? populatedInvoice.toObject() : populatedInvoice;
+    if (!returnObj.products || returnObj.products.length === 0) {
+      returnObj.products = [{
+        product: returnObj.product,
+        category: returnObj.category,
+        quantity: returnObj.quantity,
+        salePrice: returnObj.salePrice,
+        description: returnObj.description || "No description",
+        _id: returnObj._id,
+      }];
+      returnObj.totalAmount = returnObj.salePrice;
+    }
 
     return NextResponse.json({
       success: true,
-      invoice: populatedInvoice,
+      invoice: returnObj,
     }, { status: 201 });
     
   } catch (error: any) {

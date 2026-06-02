@@ -16,6 +16,8 @@ export async function GET(
     const invoice = await Invoice.findById(id)
       .populate("product", "name price images stock description")
       .populate("category", "name")
+      .populate("products.product", "name price images stock description")
+      .populate("products.category", "name")
       .populate("soldBy", "name email role");
     
     if (!invoice) {
@@ -24,10 +26,23 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    const obj = invoice.toObject ? invoice.toObject() : invoice;
+    if (!obj.products || obj.products.length === 0) {
+      obj.products = [{
+        product: obj.product,
+        category: obj.category,
+        quantity: obj.quantity,
+        salePrice: obj.salePrice,
+        description: obj.description || "No description",
+        _id: obj._id,
+      }];
+      obj.totalAmount = obj.salePrice;
+    }
     
     return NextResponse.json({
       success: true,
-      invoice,
+      invoice: obj,
     });
     
   } catch (error: any) {

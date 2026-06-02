@@ -4,6 +4,7 @@ import { InvoiceProvider, useInvoices } from "@/context/InvoiceContext";
 import { ProductProvider, useProducts } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 import {
   RefreshCw,
   ReceiptText,
@@ -23,8 +24,12 @@ const InvoicesInner = () => {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
-  const [prevFilters, setPrevFilters] = useState({ filterProduct, filterCategory, filterStart, filterEnd });
-
+  const [prevFilters, setPrevFilters] = useState({
+    filterProduct,
+    filterCategory,
+    filterStart,
+    filterEnd,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
@@ -34,16 +39,14 @@ const InvoicesInner = () => {
     fetchInvoices();
   }, [fetchProducts, fetchCategories, fetchInvoices]);
 
-  // Debounce filter changes
   useEffect(() => {
     const timer = setTimeout(() => {
-      const filtersChanged =
+      const changed =
         filterProduct !== prevFilters.filterProduct ||
         filterCategory !== prevFilters.filterCategory ||
         filterStart !== prevFilters.filterStart ||
         filterEnd !== prevFilters.filterEnd;
-
-      if (filtersChanged) {
+      if (changed) {
         setPrevFilters({ filterProduct, filterCategory, filterStart, filterEnd });
         fetchInvoices(1, "", {
           product: filterProduct,
@@ -53,18 +56,16 @@ const InvoicesInner = () => {
         });
       }
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [filterProduct, filterCategory, filterStart, filterEnd, fetchInvoices]);
 
-  const handleApplyFilters = () => {
+  const handleApplyFilters = () =>
     fetchInvoices(1, "", {
       product: filterProduct,
       category: filterCategory,
       startDate: filterStart,
       endDate: filterEnd,
     });
-  };
 
   const clearFilters = () => {
     setFilterProduct("");
@@ -87,25 +88,54 @@ const InvoicesInner = () => {
 
   const handleDownload = async (invoice: any) => {
     setDownloadingId(invoice._id);
-    await downloadInvoicePDF(invoice);
-    setDownloadingId(null);
+    try {
+      await downloadInvoicePDF(invoice);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const inputClass =
     "w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 transition-colors";
 
+  // Helper: build per-invoice tooltip data
+  const getInvData = (inv: any) => {
+    const productNames: string[] = (inv.products ?? []).map(
+      (p: any) => p.product?.name || "Deleted Product"
+    );
+    const categoryNames: string[] = (inv.products ?? []).map(
+      (p: any) =>
+        p.category?.name ||
+        categories.find((c: any) => c._id === (p.category?._id || p.category))
+          ?.name ||
+        "Uncategorized"
+    );
+    const descriptions: string[] = (inv.products ?? [])
+      .map((p: any) => p.description)
+      .filter(Boolean);
+
+    const totalQty = (inv.products ?? []).reduce(
+      (s: number, p: any) => s + (p.quantity ?? 0),
+      0
+    );
+    const totalPrice = (inv.products ?? []).reduce(
+      (s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1),
+      0
+    );
+
+    return { productNames, categoryNames, descriptions, totalQty, totalPrice };
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Header - unchanged */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-primary/10 text-primary rounded-xl">
             <ReceiptText size={20} />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight">
-              Sales Invoices
-            </h1>
+            <h1 className="text-2xl font-black tracking-tight">Sales Invoices</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {invoices.length} receipt{invoices.length !== 1 ? "s" : ""} found
             </p>
@@ -123,7 +153,7 @@ const InvoicesInner = () => {
         </Button>
       </div>
 
-      {/* Filters - unchanged */}
+      {/* ── Filters ── */}
       <div className="rounded-2xl border bg-card p-5 shadow-sm flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-sm flex items-center gap-1.5">
@@ -210,44 +240,163 @@ const InvoicesInner = () => {
         </div>
         <div className="flex justify-end pt-2">
           <Button size="sm" onClick={handleApplyFilters} className="gap-2">
-            < Search size={14} /> Apply Filters
+            <Search size={14} /> Apply Filters
           </Button>
         </div>
       </div>
 
+      {/* ── Content ── */}
       {loading ? (
         <div className="h-64 rounded-2xl bg-muted/60 animate-pulse" />
       ) : invoices.length === 0 ? (
         <div className="flex flex-col items-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card">
           <ReceiptText size={40} className="opacity-30" />
-          <p className="text-sm font-medium">
-            No invoices found matching criteria.
-          </p>
+          <p className="text-sm font-medium">No invoices found matching criteria.</p>
         </div>
       ) : (
         <>
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-hidden rounded-2xl border bg-card shadow-sm">
+          {/* ── Desktop Table ── */}
+          <div className="hidden md:block rounded-2xl border bg-card shadow-sm overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 <tr>
-                  <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3 whitespace-nowrap">Date</th>
                   <th className="px-5 py-3">Product</th>
-                  <th className="px-5 py-3 bg-primary/5">Qty</th>
+                  <th className="px-5 py-3">Category</th>
+                  <th className="px-5 py-3 bg-primary/5 text-center">Qty</th>
                   <th className="px-5 py-3 bg-primary/5">Total Price</th>
-                  <th className="px-5 py-3">Admin Memo</th>
-                  <th className="px-5 py-3 text-right">Sold By</th>
+                  <th className="px-5 py-3">Description</th>
+                  <th className="px-5 py-3 text-right whitespace-nowrap">Sold By</th>
                   <th className="px-5 py-3 text-center">Bill</th>
-                  {/* New column */}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {invoices.map((inv) => (
-                  <tr
-                    key={inv._id}
-                    className="hover:bg-muted/20 transition-colors"
-                  >
-                    <td className="px-5 py-4 whitespace-nowrap text-xs text-muted-foreground">
+                {invoices.map((inv) => {
+                  const { productNames, categoryNames, descriptions, totalQty, totalPrice } =
+                    getInvData(inv);
+                  return (
+                    <tr key={inv._id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-4 whitespace-nowrap text-xs text-muted-foreground">
+                        {new Date(inv.createdAt).toLocaleDateString("en-US", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+
+                      {/* Product — portal tooltip */}
+                      <td className="px-5 py-4 font-semibold text-foreground">
+                        <TooltipCell
+                          display={productNames.join(", ") || "-"}
+                          tooltipLines={productNames}
+                          maxChars={32}
+                        />
+                      </td>
+
+                      {/* Category — portal tooltip */}
+                      <td className="px-5 py-4 text-xs text-muted-foreground">
+                        <TooltipCell
+                          display={categoryNames.join(", ") || "-"}
+                          tooltipLines={categoryNames}
+                          maxChars={28}
+                        />
+                      </td>
+
+                      <td className="px-5 py-4 font-bold text-center bg-primary/5">
+                        {totalQty}
+                      </td>
+                      <td className="px-5 py-4 font-black bg-primary/5 text-emerald-600 whitespace-nowrap">
+                        Rs. {totalPrice.toLocaleString()}
+                      </td>
+
+                      {/* Description — portal tooltip */}
+                      <td className="px-5 py-4 text-xs text-muted-foreground">
+                        <TooltipCell
+                          display={descriptions.join(" | ") || "-"}
+                          tooltipLines={descriptions.length ? descriptions : ["-"]}
+                          maxChars={36}
+                        />
+                      </td>
+
+                      <td className="px-5 py-4 text-xs text-right whitespace-nowrap">
+                        {inv.soldBy?.name || "Unknown"}
+                        <div className="text-[10px] text-muted-foreground capitalize">
+                          {inv.soldBy?.role || "Staff"}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <button
+                          onClick={() => handleDownload(inv)}
+                          disabled={downloadingId === inv._id}
+                          className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
+                          title="Download Bill"
+                        >
+                          {downloadingId === inv._id ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Download size={14} />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── Mobile Cards ── */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {invoices.map((inv) => {
+              const { productNames, categoryNames, descriptions, totalQty, totalPrice } =
+                getInvData(inv);
+              return (
+                <div
+                  key={inv._id}
+                  className="rounded-2xl border bg-card p-4 shadow-sm flex flex-col gap-3"
+                >
+                  {/* Top row */}
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm text-foreground">
+                        <TooltipCell
+                          display={productNames.join(", ") || "-"}
+                          tooltipLines={productNames}
+                          maxChars={30}
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        <TooltipCell
+                          display={categoryNames.join(", ") || "Unknown Category"}
+                          tooltipLines={categoryNames}
+                          maxChars={28}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-black text-emerald-600 text-base">
+                        Rs. {totalPrice.toLocaleString()}
+                      </p>
+                      <p className="text-xs font-bold text-muted-foreground bg-muted inline-block px-1.5 py-0.5 rounded">
+                        Qty: {totalQty}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="text-xs text-foreground bg-muted/40 p-2 rounded-lg border">
+                    <TooltipCell
+                      display={descriptions.join(" | ") || "No description"}
+                      tooltipLines={descriptions.length ? descriptions : ["No description"]}
+                      maxChars={55}
+                    />
+                  </div>
+
+                  {/* Bottom row */}
+                  <div className="flex justify-between items-center border-t pt-2 mt-1">
+                    <div className="text-[10px] text-muted-foreground">
                       {new Date(inv.createdAt).toLocaleDateString("en-US", {
                         day: "numeric",
                         month: "short",
@@ -255,105 +404,27 @@ const InvoicesInner = () => {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
-                    </td>
-                    <td className="px-5 py-4 font-semibold text-foreground">
-                      {inv.product?.name || "Deleted Product"}
-                      <div className="text-[10px] font-normal text-muted-foreground">
-                        {inv.category?.name || "Deleted Category"}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <div className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        By {inv.soldBy?.name || "Unknown"}
                       </div>
-                    </td>
-                    <td className="px-5 py-4 font-bold text-center bg-primary/5">
-                      {inv.quantity}
-                    </td>
-                    <td className="px-5 py-4 font-black bg-primary/5 text-emerald-600">
-                      Rs. {inv.salePrice.toLocaleString()}
-                    </td>
-                    <td className="px-5 py-4 text-xs text-muted-foreground truncate max-w-[200px]">
-                      {inv.description}
-                    </td>
-                    <td className="px-5 py-4 text-xs text-right whitespace-nowrap">
-                      {inv.soldBy?.name || "Unknown"}
-                      <div className="text-[10px] text-muted-foreground capitalize">
-                        {inv.soldBy?.role || "Staff"}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-center">
                       <button
                         onClick={() => handleDownload(inv)}
                         disabled={downloadingId === inv._id}
-                        className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
-                        title="Download Bill"
+                        className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
                       >
                         {downloadingId === inv._id ? (
-                          <RefreshCw size={14} className="animate-spin" />
+                          <RefreshCw size={12} className="animate-spin" />
                         ) : (
-                          <Download size={14} />
+                          <Download size={12} />
                         )}
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="flex flex-col gap-3 md:hidden">
-            {invoices.map((inv) => (
-              <div
-                key={inv._id}
-                className="rounded-2xl border bg-card p-4 shadow-sm flex flex-col gap-3"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base">
-                      {inv.product?.name || "Deleted Product"}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {inv.category?.name || "Unknown Category"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-black text-emerald-600 text-base">
-                      Rs. {inv.salePrice.toLocaleString()}
-                    </p>
-                    <p className="text-xs font-bold text-muted-foreground bg-muted inline-block px-1.5 py-0.5 rounded">
-                      Qty: {inv.quantity}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-xs text-foreground bg-muted/40 p-2 rounded-lg border">
-                  {inv.description}
-                </div>
-                <div className="flex justify-between items-center border-t pt-2 mt-1">
-                  <div className="text-[10px] text-muted-foreground">
-                    {new Date(inv.createdAt).toLocaleDateString("en-US", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <div className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      By {inv.soldBy?.name || "Unknown"}
                     </div>
-                    <button
-                      onClick={() => handleDownload(inv)}
-                      disabled={downloadingId === inv._id}
-                      className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
-                    >
-                      {downloadingId === inv._id ? (
-                        <RefreshCw size={12} className="animate-spin" />
-                      ) : (
-                        <Download size={12} />
-                      )}
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
@@ -361,16 +432,14 @@ const InvoicesInner = () => {
   );
 };
 
-const InvoicesPage = () => {
-  return (
-    <ProductProvider>
-      <CategoryProvider>
-        <InvoiceProvider>
-          <InvoicesInner />
-        </InvoiceProvider>
-      </CategoryProvider>
-    </ProductProvider>
-  );
-};
+const InvoicesPage = () => (
+  <ProductProvider>
+    <CategoryProvider>
+      <InvoiceProvider>
+        <InvoicesInner />
+      </InvoiceProvider>
+    </CategoryProvider>
+  </ProductProvider>
+);
 
 export default InvoicesPage;

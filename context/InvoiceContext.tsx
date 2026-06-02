@@ -4,15 +4,25 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import toast from "@/utils/toast";
 
-export interface InvoiceItem {
-  _id: string;
-  invoiceNo?: string;
+export interface InvoiceProductItem {
   product: any;
   category: any;
   quantity: number;
   salePrice: number;
-  totalAmount?: number;
   description: string;
+  _id?: string;
+}
+
+export interface InvoiceItem {
+  _id: string;
+  invoiceNo?: string;
+  product?: any;
+  category?: any;
+  quantity?: number;
+  salePrice?: number;
+  totalAmount: number;
+  description?: string;
+  products: InvoiceProductItem[];
   soldBy: any;
   createdAt: string;
   updatedAt?: string;
@@ -37,10 +47,16 @@ interface InvoiceContextType {
     },
   ) => Promise<void>;
   createInvoice: (data: {
-    productId: string;
-    quantity: number;
-    salePrice: number;
-    description: string;
+    productId?: string;
+    quantity?: number;
+    salePrice?: number;
+    description?: string;
+    products?: {
+      productId: string;
+      quantity: number;
+      salePrice: number;
+      description: string;
+    }[];
   }) => Promise<boolean>;
   getInvoiceById: (id: string) => Promise<InvoiceItem | null>;
   deleteInvoice: (id: string) => Promise<void>;
@@ -122,10 +138,16 @@ export const InvoiceProvider = ({
   );
 
   const createInvoice = async (data: {
-    productId: string;
-    quantity: number;
-    salePrice: number;
-    description: string;
+    productId?: string;
+    quantity?: number;
+    salePrice?: number;
+    description?: string;
+    products?: {
+      productId: string;
+      quantity: number;
+      salePrice: number;
+      description: string;
+    }[];
   }): Promise<boolean> => {
     try {
       const res = await fetch("/api/invoices", {

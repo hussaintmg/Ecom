@@ -30,10 +30,13 @@ interface ProductContextType {
   error: string | null;
   searchQuery: string;
   selectedCategory: string;
+  stockFilter: string;
+  setStockFilter: (filter: string) => void;
   fetchProducts: (
     page?: number,
     search?: string,
     category?: string,
+    stock?: string,
   ) => Promise<void>;
   fetchProductById: (id: string) => Promise<Product | null>;
   deleteProduct: (id: string) => Promise<boolean>;
@@ -65,9 +68,10 @@ export const ProductProvider = ({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [stockFilter, setStockFilter] = useState("All");
 
   const fetchProducts = useCallback(
-    async (page: number = 1, search: string = "", category: string = "All") => {
+    async (page: number = 1, search: string = "", category: string = "All", stock: string = "All") => {
       setLoading(true);
       setError(null);
 
@@ -81,6 +85,9 @@ export const ProductProvider = ({
         }
         if (category && category !== "All") {
           queryParams.append("category", category);
+        }
+        if (stock && stock !== "All") {
+          queryParams.append("stock", stock);
         }
 
         const res = await fetch(`/api/products?${queryParams}`);
@@ -258,8 +265,8 @@ export const ProductProvider = ({
   };
 
   const refresh = useCallback(async () => {
-    await fetchProducts(currentPage, searchQuery, selectedCategory);
-  }, [fetchProducts, currentPage, searchQuery, selectedCategory]);
+    await fetchProducts(currentPage, searchQuery, selectedCategory, stockFilter);
+  }, [fetchProducts, currentPage, searchQuery, selectedCategory, stockFilter]);
 
   return (
     <ProductContext.Provider
@@ -272,6 +279,7 @@ export const ProductProvider = ({
         error,
         searchQuery,
         selectedCategory,
+        stockFilter,
         fetchProducts,
         fetchProductById,
         deleteProduct,
@@ -283,6 +291,7 @@ export const ProductProvider = ({
         setCurrentPage,
         setSearchQuery,
         setSelectedCategory,
+        setStockFilter,
       }}
     >
       {children}

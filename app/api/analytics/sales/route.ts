@@ -27,7 +27,10 @@ export async function GET(req: NextRequest) {
 
     if (productId) {
       orderQuery["items.product"] = productId;
-      invoiceQuery.product = productId;
+      invoiceQuery.$or = [
+        { product: productId },
+        { "products.product": productId }
+      ];
     }
 
     const orders = await Order.find(orderQuery).lean();
@@ -58,10 +61,20 @@ export async function GET(req: NextRequest) {
     });
 
     // Process Invoices
-    invoices.forEach(inv => {
+    invoices.forEach((inv: any) => {
         const dateStr = new Date(inv.createdAt).toISOString().split("T")[0];
         if (dailyIncomeMap.has(dateStr)) {
-            dailyIncomeMap.set(dateStr, dailyIncomeMap.get(dateStr) + inv.salePrice);
+            let amount = inv.totalAmount || inv.salePrice || 0;
+            if (productId) {
+                if (inv.products && inv.products.length > 0) {
+                    amount = inv.products.reduce((sum: number, item: any) => {
+                        return item.product.toString() === productId ? sum + item.salePrice : sum;
+                    }, 0);
+                } else if (inv.product && inv.product.toString() !== productId) {
+                    amount = 0;
+                }
+            }
+            dailyIncomeMap.set(dateStr, dailyIncomeMap.get(dateStr) + amount);
         }
     });
 

@@ -43,6 +43,18 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
     };
     
     try {
+      // Wait for all images inside the element to finish loading before saving PDF
+      const images = Array.from(element.getElementsByTagName("img"));
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          });
+        })
+      );
+
       await html2pdf().set(opt).from(element).save();
     } catch (error) {
       console.error("PDF generation error:", error);

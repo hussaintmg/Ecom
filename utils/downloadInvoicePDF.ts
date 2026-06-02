@@ -1,275 +1,233 @@
 // utils/downloadInvoicePDF.ts
-
 import html2pdf from "html2pdf.js";
 
-export interface BillData {
-  invoiceNo: string;
-  date: string;
-  productName: string;
-  quantity: number;
-  totalPrice: number;
-  description: string;
-  sellerName?: string;
-  shopName?: string;
-  shopAddress?: string;
-  shopPhone?: string;
-  productImage?: string;
-}
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const esc = (s: string) =>
+  (s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const toBase64 = async (url: string): Promise<string> => {
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
+  try {
+    // Try direct fetch first (for same-origin or CORS-enabled images)
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    // If direct fetch fails, try proxy
+    try {
+      const proxyUrl = `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxyUrl);
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return "";
+    }
+  }
+};
+
+// ── main export ───────────────────────────────────────────────────────────────
 
 export const downloadInvoicePDF = async (invoice: any) => {
-  console.log("Invoice data:", invoice); // Debug log
+  // 1. Normalise items
+  const rawItems: any[] = invoice.products?.length
+    ? invoice.products
+    : [
+        {
+          product: invoice.product,
+          quantity: invoice.quantity,
+          salePrice: invoice.salePrice,
+          description: invoice.description || "",
+        },
+      ];
 
-  // Get product image URL - multiple fallback options
-  let productImageUrl = "";
-  try {
-    // Check different possible image locations
-    if (invoice.product?.images && Array.isArray(invoice.product.images)) {
-      const firstImage = invoice.product.images[0];
-      if (firstImage) {
-        if (typeof firstImage === "string") {
-          productImageUrl = firstImage;
-        } else if (firstImage.url) {
-          productImageUrl = firstImage.url;
-        }
-      }
+  const grandTotal =
+    invoice.totalAmount ??
+    rawItems.reduce((s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1), 0);
+
+  // 2. Extract image URLs
+  const itemsWithUrl = rawItems.map((item: any) => {
+    let imageUrl = "";
+    const imgs = item.product?.images;
+    if (Array.isArray(imgs) && imgs.length > 0) {
+      imageUrl = typeof imgs[0] === "string" ? imgs[0] : imgs[0]?.url ?? "";
+    } else if (item.product?.image) {
+      imageUrl = item.product.image;
     }
+    return {
+      productName: item.product?.name || "Deleted Product",
+      quantity: item.quantity ?? 0,
+      salePrice: item.salePrice ?? 0,
+      description: item.description || "",
+      productDescription: item.product?.description || "",
+      imageUrl,
+    };
+  });
 
-    // If still no image, check product.image
-    if (!productImageUrl && invoice.product?.image) {
-      productImageUrl = invoice.product.image;
-    }
+  // 3. Convert all images to base64 in parallel
+  const b64s = await Promise.all(itemsWithUrl.map((it) => toBase64(it.imageUrl)));
 
-    // If still no image, check invoice.image
-    if (!productImageUrl && invoice.image) {
-      productImageUrl = invoice.image;
-    }
+  // 4. Build table rows with better image handling
+  const rows = itemsWithUrl
+    .map((item, i) => {
+      const b64 = b64s[i];
+      const imgBlock = b64
+        ? `<div style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;background:#ffffff;flex-shrink:0;">
+             <img src="${b64}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(item.productName)}" />
+           </div>`
+        : `<div style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:8px;border:1px solid #e5e7eb;background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:500;flex-shrink:0;">No Image</div>`;
 
-    console.log("Product image URL:", productImageUrl);
-  } catch (err) {
-    console.error("Error getting image:", err);
-  }
+      const noteDesc = esc(item.description);
 
-  const billData: BillData = {
-    invoiceNo: `INV-${invoice._id.slice(-8)}`,
-    date: new Date(invoice.createdAt).toLocaleString("en-PK", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    productName: invoice.product?.name || "Deleted Product",
-    quantity: invoice.quantity,
-    totalPrice: invoice.salePrice,
-    description: invoice.description || "No description",
-    sellerName: invoice.soldBy?.name || "Unknown",
-    shopName: "MS Traders",
-    shopAddress: "Shop C15/C17, Quality Godown, Shershah",
-    shopPhone: "Adnan +92 333 3424083",
-    productImage: productImageUrl,
-  };
+      const textBlock = `
+        <div style="flex:1;margin-left:12px;">
+          <div style="font-weight:600;color:#111827;font-size:13px;margin-bottom:4px;">${esc(item.productName)}</div>
+          ${noteDesc && noteDesc !== "No description" && noteDesc !== "" 
+            ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">Desc: ${noteDesc}</div>` : ""}
+        </div>`;
 
-  // Escape HTML special characters
-  const escapeHtml = (str: string) => {
-    if (!str) return "";
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  };
+      return `
+        <tr>
+          <td style="padding:12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;">
+            <div style="display:flex;align-items:center;">
+              ${imgBlock}
+              ${textBlock}
+            </div>
+           </td>
+          <td style="padding:12px;border-bottom:1px solid #f0f0f0;text-align:center;vertical-align:middle;font-weight:500;font-size:13px;color:#374151;">
+            ${item.quantity}
+           </td>
+          <td style="padding:12px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:middle;font-weight:600;font-size:13px;color:#059669;">
+            Rs. ${item.salePrice.toLocaleString()}
+           </td>
+        </tr>`;
+    })
+    .join("");
 
-  const safeProductName = escapeHtml(billData.productName);
-  const safeDescription = escapeHtml(billData.description);
-  const safeSellerName = escapeHtml(billData.sellerName || "Unknown");
-  const safeShopName = escapeHtml(billData.shopName || "MS Traders");
-  const safeShopAddress = escapeHtml(
-    billData.shopAddress || "Shop C15/C17, Quality Godown, Shershah",
-  );
-  const safeShopPhone = escapeHtml(
-    billData.shopPhone || "Adnan +92 333 3424083",
-  );
+  const invoiceNo = invoice.invoiceNo || `INV-${invoice._id?.slice(-8) || "00000000"}`;
+  const dateStr = invoice.createdAt 
+    ? new Date(invoice.createdAt).toLocaleString("en-PK", {
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      })
+    : new Date().toLocaleString("en-PK", {
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+  const seller = esc(invoice.soldBy?.name || "MS Traders");
 
-  // Create image HTML - using img tag with proper styling
-  const imageHtml = billData.productImage
-    ? `
-    <div style="text-align: center; margin-bottom: 15px;">
-      <img 
-        src="${billData.productImage}" 
-        alt="${safeProductName}"
-        style="max-width: 100px; max-height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd;"
-        onerror="this.style.display='none'"
-      />
-    </div>
-  `
-    : "";
+  // 5. Clean, centered HTML with proper sizing
+  const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f9fafb;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+      <div style="max-width:650px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:hidden;">
 
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Invoice ${billData.invoiceNo}</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 20px;
-          background: #fff;
-        }
-        .invoice {
-          max-width: 500px;
-          margin: 0 auto;
-          background: #fff;
-          border: 1px solid #ddd;
-          border-radius: 10px;
-          padding: 20px;
-        }
-        .header {
-          text-align: center;
-          border-bottom: 2px solid #333;
-          padding-bottom: 10px;
-          margin-bottom: 20px;
-        }
-        .shop-name {
-          font-size: 22px;
-          font-weight: bold;
-          margin: 0;
-        }
-        .shop-details {
-          font-size: 11px;
-          color: #666;
-          margin: 5px 0;
-        }
-        .invoice-title {
-          font-size: 16px;
-          margin-top: 10px;
-        }
-        .info {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 20px;
-          font-size: 12px;
-          background: #f9f9f9;
-          padding: 10px;
-          border-radius: 5px;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 20px;
-        }
-        th {
-          background: #f0f0f0;
-          padding: 8px;
-          text-align: left;
-          font-size: 12px;
-        }
-        td {
-          padding: 8px;
-          border-bottom: 1px solid #eee;
-          font-size: 12px;
-        }
-        .text-right {
-          text-align: right;
-        }
-        .text-center {
-          text-align: center;
-        }
-        .total {
-          text-align: right;
-          font-size: 16px;
-          font-weight: bold;
-          margin-bottom: 20px;
-          padding-top: 10px;
-          border-top: 1px solid #ddd;
-        }
-        .memo {
-          font-size: 11px;
-          color: #666;
-          border-top: 1px dashed #ccc;
-          padding-top: 10px;
-          margin-bottom: 20px;
-        }
-        .footer {
-          text-align: center;
-          font-size: 10px;
-          color: #888;
-          border-top: 1px solid #eee;
-          padding-top: 10px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="invoice">
-        <div class="header">
-          <div class="shop-name">${safeShopName}</div>
-          <div class="shop-details">${safeShopAddress}</div>
-          <div class="shop-details">Phone: ${safeShopPhone}</div>
-          <div class="invoice-title">SALES INVOICE</div>
-        </div>
-        
-        <div class="info">
-          <div><strong>Invoice No:</strong> ${billData.invoiceNo}</div>
-          <div><strong>Date:</strong> ${billData.date}</div>
-        </div>
-        
-        ${imageHtml}
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th class="text-center">Qty</th>
-              <th class="text-right">Total (PKR)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${safeProductName}</td>
-              <td class="text-center">${billData.quantity}</td>
-              <td class="text-right">${billData.totalPrice.toLocaleString()}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div class="total">
-          Total Payable: PKR ${billData.totalPrice.toLocaleString()}
-        </div>
-        
-        ${
-          billData.description && billData.description !== "No description"
-            ? `
-        <div class="memo">
-          <strong>Description:</strong> ${safeDescription}
-        </div>
-        `
-            : ""
-        }
-        
-        <div class="footer">
-          <p>Thank you for your purchase!</p>
-          <p>Seller: ${safeSellerName}</p>
+        <!-- INNER CONTENT -->
+        <div style="padding:28px 32px;">
+
+          <!-- HEADER -->
+          <div style="text-align:center;border-bottom:2px solid #1f2937;padding-bottom:16px;margin-bottom:24px;">
+            <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:4px;">MS Traders</div>
+            <div style="font-size:12px;color:#6b7280;margin:4px 0;">Shop C15/C17, Quality Godown, Shershah</div>
+            <div style="font-size:12px;color:#6b7280;margin:4px 0;">Phone: Adnan +92 333 3424083</div>
+            <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">SALES INVOICE</div>
+          </div>
+
+          <!-- META INFO -->
+          <div style="display:flex;justify-content:space-between;margin-bottom:24px;font-size:12px;background:#f9fafb;padding:12px 16px;border-radius:8px;border:1px solid #e5e7eb;">
+            <div><span style="font-weight:600;color:#4b5563;">Invoice No:</span> <span style="color:#111827;">${invoiceNo}</span></div>
+            <div><span style="font-weight:600;color:#4b5563;">Date:</span> <span style="color:#111827;">${dateStr}</span></div>
+          </div>
+
+          <!-- ITEMS TABLE -->
+          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
+                <th style="padding:12px;text-align:left;font-size:12px;font-weight:600;color:#4b5563;">Item</th>
+                <th style="padding:12px;text-align:center;font-size:12px;font-weight:600;color:#4b5563;width:70px;">Qty</th>
+                <th style="padding:12px;text-align:right;font-size:12px;font-weight:600;color:#4b5563;width:120px;">Price</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="3" style="padding:40px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
+          </table>
+
+          <!-- TOTAL -->
+          <div style="text-align:right;padding-top:16px;border-top:2px solid #1f2937;margin-bottom:24px;">
+            <div style="font-size:18px;font-weight:700;color:#111827;">
+              Total Payable: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <!-- FOOTER -->
+          <div style="text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px;">
+            <div style="margin-bottom:4px;">Thank you for your purchase!</div>
+            <div style="font-weight:500;color:#6b7280;">Seller: ${seller}</div>
+          </div>
         </div>
       </div>
-    </body>
-    </html>
+    </div>`;
+
+  // 6. Create container for PDF generation
+  const container = document.createElement("div");
+  container.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+    z-index: -1;
+    opacity: 0;
+    pointer-events: none;
   `;
+  container.innerHTML = html;
+  document.body.appendChild(container);
 
-  // Create temporary element
-  const element = document.createElement("div");
-  element.innerHTML = htmlContent;
-  document.body.appendChild(element);
+  // Get the actual invoice element
+  const invoiceElement = container.firstElementChild as HTMLElement;
 
-  const options = {
+  // Wait for images to load
+  const images = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    images.map((img) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          })
+    )
+  );
+
+  // Add a small delay to ensure rendering is complete
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const opts = {
     margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
-    filename: `Invoice_${billData.invoiceNo}.pdf`,
+    filename: `Invoice_${invoiceNo}.pdf`,
     image: { type: "jpeg" as const, quality: 0.98 },
     html2canvas: {
       scale: 2,
       useCORS: true,
-      logging: true,
+      allowTaint: false,
+      logging: false,
+      backgroundColor: "#ffffff",
     },
     jsPDF: {
       unit: "in" as const,
@@ -279,11 +237,11 @@ export const downloadInvoicePDF = async (invoice: any) => {
   };
 
   try {
-    await html2pdf().set(options).from(element).save();
-  } catch (error) {
-    console.error("PDF Error:", error);
-    throw new Error("Failed to generate PDF");
+    await html2pdf().set(opts).from(invoiceElement).save();
+  } catch (err) {
+    console.error("PDF generation error:", err);
+    throw err;
   } finally {
-    document.body.removeChild(element);
+    document.body.removeChild(container);
   }
 };
