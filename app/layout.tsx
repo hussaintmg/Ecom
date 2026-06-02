@@ -1,3 +1,5 @@
+// app/layout.tsx
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -5,6 +7,9 @@ import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { Suspense } from "react";
 import MessageToast from "@/components/ui/MessageToast";
+import { ProductProvider } from "@/context/ProductContext";
+import { CategoryProvider } from "@/context/CategoryContext";
+import { InvoiceProvider } from "@/context/InvoiceContext"; // Make sure this path is correct
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,21 +36,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <body className="min-h-full">
         <AuthProvider>
           <CartProvider>
             <OrderProvider>
-              <LayoutWrapper>
-                {children}
-              </LayoutWrapper>
-              <Suspense>
-                <MessageToast />
-              </Suspense>
-              <ToastProvider position="top-right" />
+              <ProductProvider>
+                <CategoryProvider>
+                  <InvoiceProvider>
+                    <LayoutWrapper>{children}</LayoutWrapper>
+                  </InvoiceProvider>
+                </CategoryProvider>
+              </ProductProvider>
             </OrderProvider>
           </CartProvider>
         </AuthProvider>
+        <Suspense>
+          <MessageToast />
+        </Suspense>
+        <ToastProvider position="top-right" />
       </body>
     </html>
   );

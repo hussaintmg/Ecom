@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 AGENTS.md
 CLAUDE.md
+
+products.json
+Ecom.products.json
+app\api\upload-many-products

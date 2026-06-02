@@ -1,25 +1,11 @@
 "use client";
 import React, { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ProductProvider,
-  useProducts,
-  MediaItem,
-} from "@/context/ProductContext";
+import { ProductProvider, useProducts, MediaItem } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import { StockProvider, useStock } from "@/context/StockContext";
 import Button from "@/components/ui/Button";
-import {
-  ArrowLeft,
-  RefreshCw,
-  Plus,
-  Save,
-  Package,
-  TrendingUp,
-  Clock,
-  ImagePlus,
-  X,
-} from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, Save, Package, TrendingUp, Clock, ImagePlus, X } from "lucide-react";
 
 /* ─── Stock History (unchanged) ─── */
 const StockHistory = ({ productId }: { productId: string }) => {
@@ -66,31 +52,18 @@ const StockHistory = ({ productId }: { productId: string }) => {
             {logs.map((log) => (
               <tr key={log._id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1 font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}
-                  >
-                    {log.change > 0 && "+"}
-                    {log.change}
+                  <span className={`inline-flex items-center gap-1 font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {log.change > 0 && "+"}{log.change}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-semibold text-muted-foreground">
-                  {log.resultingStock}
-                </td>
-                <td className="px-4 py-3 line-clamp-2 max-w-[200px]">
-                  {log.description}
-                </td>
+                <td className="px-4 py-3 font-semibold text-muted-foreground">{log.resultingStock}</td>
+                <td className="px-4 py-3 line-clamp-2 max-w-[200px]">{log.description}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                   {new Date(log.createdAt).toLocaleDateString("en-PK", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
+                    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
                   })}
                 </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {log.performedBy?.name || "—"}
-                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{log.performedBy?.name || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -100,44 +73,22 @@ const StockHistory = ({ productId }: { productId: string }) => {
       {/* Mobile Cards */}
       <div className="flex flex-col gap-3 md:hidden">
         {logs.map((log) => (
-          <div
-            key={log._id}
-            className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/20 transition-colors shadow-sm"
-          >
-            <div
-              className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
-                log.change > 0
-                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
-                  : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-              }`}
-            >
+          <div key={log._id} className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/20 transition-colors shadow-sm">
+            <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
+              log.change > 0 ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400" : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
+            }`}>
               <TrendingUp size={14} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`text-sm font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}
-                >
-                  {log.change > 0 ? "+" : ""}
-                  {log.change}
+                <span className={`text-sm font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {log.change > 0 ? "+" : ""}{log.change}
                 </span>
-                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">
-                  → {log.resultingStock} units
-                </span>
+                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">→ {log.resultingStock} units</span>
               </div>
-              <p className="text-sm text-foreground mt-0.5 break-words">
-                {log.description}
-              </p>
+              <p className="text-sm text-foreground mt-0.5 break-words">{log.description}</p>
               <div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground border-t pt-2">
-                <span>
-                  {new Date(log.createdAt).toLocaleDateString("en-PK", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+                <span>{new Date(log.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                 {log.performedBy && <span>• by {log.performedBy.name}</span>}
               </div>
             </div>
@@ -151,8 +102,7 @@ const StockHistory = ({ productId }: { productId: string }) => {
 /* ─── Main Inner with Image Management ─── */
 const ManageProductInner = ({ productId }: { productId: string }) => {
   const router = useRouter();
-  const { fetchProductById, editProduct, uploadMedia, deleteMedia } =
-    useProducts();
+  const { fetchProductById, editProduct, uploadMedia, deleteMedia } = useProducts();
   const { categories, fetchCategories } = useCategories();
   const { addStockChange, fetchLogs } = useStock();
 
@@ -194,11 +144,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
     const newPending: MediaItem[] = [];
     for (const file of Array.from(files)) {
       const preview = await fileToDataUri(file);
-      newPending.push({
-        url: preview,
-        publicId: "",
-        file,
-      });
+      newPending.push({ url: preview, publicId: "", file } as any);
     }
     setPendingImages((prev) => [...prev, ...newPending]);
     setUploading(false);
@@ -293,11 +239,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
       <div className="flex flex-col items-center py-20 gap-4">
         <Package size={40} className="text-muted-foreground opacity-40" />
         <p className="text-muted-foreground">Product not found</p>
-        <Button
-          onClick={() => router.back()}
-          variant="outline"
-          className="gap-2"
-        >
+        <Button onClick={() => router.back()} variant="outline" className="gap-2">
           <ArrowLeft size={14} /> Go Back
         </Button>
       </div>
@@ -311,19 +253,14 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
     <div className="flex flex-col gap-8">
       {/* Back + Title */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => router.back()}
-          className="p-2 rounded-xl border hover:bg-muted transition-colors"
-        >
+        <button onClick={() => router.back()} className="p-2 rounded-xl border hover:bg-muted transition-colors">
           <ArrowLeft size={16} />
         </button>
         <div>
           <h1 className="text-2xl font-black tracking-tight">{product.name}</h1>
           <p className="text-sm text-muted-foreground">
             {product.category?.name} •{" "}
-            <span
-              className={`font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}
-            >
+            <span className={`font-bold ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}>
               {product.stock} in stock
             </span>
           </p>
@@ -338,53 +275,29 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
             <h2 className="font-bold text-base">Product Details</h2>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Name *
-              </span>
-              <input
-                className={inputClass}
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Name *</span>
+              <input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Category *
-              </span>
-              <select
-                className={inputClass}
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</span>
+              <select className={inputClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 <option value="">Select Category</option>
                 {categories.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
+                  <option key={c._id} value={c._id}>{c.name}</option>
                 ))}
               </select>
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Description
-              </span>
-              <textarea
-                className={`${inputClass} min-h-20 resize-y`}
-                value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</span>
+              <textarea className={`${inputClass} min-h-20 resize-y`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </label>
 
             {/* Image Management Section */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Product Images
-                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Product Images</span>
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
@@ -394,26 +307,12 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
                   <ImagePlus size={14} /> Add Images
                 </button>
               </div>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImageSelect}
-              />
+              <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
               {(existingImages.length > 0 || pendingImages.length > 0) && (
                 <div className="flex flex-wrap gap-2">
                   {existingImages.map((img, idx) => (
-                    <div
-                      key={`existing-${idx}`}
-                      className="relative w-20 h-20 rounded-lg overflow-hidden border bg-muted group"
-                    >
-                      <img
-                        src={img.url}
-                        className="w-full h-full object-cover"
-                        alt="product"
-                      />
+                    <div key={`existing-${idx}`} className="relative w-20 h-20 rounded-lg overflow-hidden border bg-muted group">
+                      <img src={img.url} className="w-full h-full object-cover" alt="product" />
                       <button
                         type="button"
                         onClick={() => removeExistingImage(idx)}
@@ -424,19 +323,10 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
                     </div>
                   ))}
                   {pendingImages.map((img, idx) => (
-                    <div
-                      key={`pending-${idx}`}
-                      className="relative w-20 h-20 rounded-lg overflow-hidden border border-dashed border-primary bg-primary/5 group"
-                    >
-                      <img
-                        src={img.url}
-                        className="w-full h-full object-cover opacity-80"
-                        alt="pending"
-                      />
+                    <div key={`pending-${idx}`} className="relative w-20 h-20 rounded-lg overflow-hidden border border-dashed border-primary bg-primary/5 group">
+                      <img src={img.url} className="w-full h-full object-cover opacity-80" alt="pending" />
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="text-[10px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full shadow-sm">
-                          New
-                        </span>
+                        <span className="text-[10px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full shadow-sm">New</span>
                       </div>
                       <button
                         type="button"
@@ -451,22 +341,13 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
               )}
               {uploading && (
                 <div className="flex items-center gap-2 text-sm text-primary">
-                  <RefreshCw size={14} className="animate-spin" /> Uploading to
-                  cloud...
+                  <RefreshCw size={14} className="animate-spin" /> Uploading to cloud...
                 </div>
               )}
             </div>
 
-            <Button
-              onClick={handleSave}
-              disabled={saving || uploading}
-              className="w-full gap-2"
-            >
-              {saving ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Save size={14} />
-              )}
+            <Button onClick={handleSave} disabled={saving || uploading} className="w-full gap-2">
+              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
               Save Changes
             </Button>
           </div>
@@ -477,51 +358,18 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
           <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base">Add Stock</h2>
-              <span
-                className={`text-2xl font-black ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}
-              >
-                {product.stock}
-              </span>
+              <span className={`text-2xl font-black ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}>{product.stock}</span>
             </div>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Quantity to Add *
-              </span>
-              <input
-                type="number"
-                className={inputClass}
-                value={stockChange}
-                onChange={(e) => setStockChange(e.target.value)}
-                min={1}
-                placeholder="e.g. 50"
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity to Add *</span>
+              <input type="number" className={inputClass} value={stockChange} onChange={(e) => setStockChange(e.target.value)} min={1} placeholder="e.g. 50" />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Description *
-              </span>
-              <textarea
-                className={`${inputClass} min-h-17.5 resize-y`}
-                value={stockDesc}
-                onChange={(e) => setStockDesc(e.target.value)}
-                placeholder="e.g. New shipment from wholesale..."
-              />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</span>
+              <textarea className={`${inputClass} min-h-17.5 resize-y`} value={stockDesc} onChange={(e) => setStockDesc(e.target.value)} placeholder="e.g. New shipment from wholesale..." />
             </label>
-            <Button
-              onClick={handleStockUpdate}
-              disabled={
-                stockLoading ||
-                !stockChange ||
-                Number(stockChange) <= 0 ||
-                !stockDesc.trim()
-              }
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full"
-            >
-              {stockLoading ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Plus size={14} />
-              )}
+            <Button onClick={handleStockUpdate} disabled={stockLoading || !stockChange || Number(stockChange) <= 0 || !stockDesc.trim()} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full">
+              {stockLoading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
               Confirm Addition
             </Button>
           </div>
@@ -539,47 +387,25 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
         {product.reviews && product.reviews.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {product.reviews.map((r: any, idx: number) => (
-              <div
-                key={idx}
-                className="p-4 border rounded-xl bg-background shadow-xs flex flex-col gap-3 relative"
-              >
+              <div key={idx} className="p-4 border rounded-xl bg-background shadow-xs flex flex-col gap-3 relative">
                 <div className="flex justify-between items-start border-b pb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center font-black text-xs text-primary">
-                      {r.user?.profileImage?.url ? (
-                        <img
-                          src={r.user.profileImage.url}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : r.user?.name ? (
-                        r.user.name[0].toUpperCase()
-                      ) : (
-                        "U"
-                      )}
+                      {r.user?.profileImage?.url ? <img src={r.user.profileImage.url} className="w-full h-full object-cover" /> : (r.user?.name ? r.user.name[0].toUpperCase() : "U")}
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-xs font-bold leading-none">
-                        {r.user?.name || "Unknown User"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground mt-0.5">
-                        {new Date(r.createdAt).toLocaleDateString()}
-                      </span>
+                      <span className="text-xs font-bold leading-none">{r.user?.name || "Unknown User"}</span>
+                      <span className="text-[10px] text-muted-foreground mt-0.5">{new Date(r.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  <div className="text-amber-500 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md tracking-widest">
-                    {r.rating}/5 Stars
-                  </div>
+                  <div className="text-amber-500 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md tracking-widest">{r.rating}/5 Stars</div>
                 </div>
-                <p className="text-sm font-medium leading-relaxed">
-                  "{r.comment}"
-                </p>
+                <p className="text-sm font-medium leading-relaxed">"{r.comment}"</p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground p-8 text-center border border-dashed rounded-xl">
-            No reviews have been posted yet.
-          </div>
+          <div className="text-sm text-muted-foreground p-8 text-center border border-dashed rounded-xl">No reviews have been posted yet.</div>
         )}
       </div>
     </div>

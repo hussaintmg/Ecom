@@ -22,6 +22,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
     stock: "",
   });
 
+  const [generateAllCategories, setGenerateAllCategories] = useState(false);
   const [existingImages, setExistingImages] = useState<MediaItem[]>([]);
   const [pendingImages, setPendingImages] = useState<MediaItem[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -40,6 +41,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
         stock: initialData.stock?.toString() || "",
       });
       setExistingImages(initialData.images || []);
+      setGenerateAllCategories(initialData.generateAllCategories || false);
     }
   }, [initialData]);
 
@@ -101,6 +103,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
       category: formData.category,
       stock: Number(formData.stock),
       images: [...existingImages, ...uploadedImages],
+      generateAllCategories: generateAllCategories, // Send to backend
     };
 
     let ok = false;
@@ -190,6 +193,33 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
             placeholder="e.g. 50"
           />
         </label>
+      </div>
+
+      {/* Generate All Categories Toggle */}
+      <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border">
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold">Generate All Categories</span>
+          <span className="text-xs text-muted-foreground">
+            Generate products for all available categories
+          </span>
+        </div>
+        
+        {/* Toggle Switch */}
+        <button
+          type="button"
+          onClick={() => setGenerateAllCategories(!generateAllCategories)}
+          className={`relative w-12 h-6 rounded-full transition-all duration-300 ${
+            generateAllCategories 
+              ? "bg-primary shadow-lg shadow-primary/30" 
+              : "bg-gray-400"
+          }`}
+        >
+          <div
+            className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${
+              generateAllCategories ? "right-0.5" : "left-0.5"
+            }`}
+          />
+        </button>
       </div>
 
       {/* Images Section */}

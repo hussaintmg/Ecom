@@ -37,33 +37,39 @@ export async function POST(req: NextRequest) {
 // DELETE: remove a file from cloudinary
 export async function DELETE(req: NextRequest) {
   try {
-    const { publicId, resourceType, folder } = await req.json();
+    const { publicId, resourceType } = await req.json();
     const user = getUserFromRequest(req);
 
+    // Check authentication
     if (!user) {
-      return NextResponse.json({ error: "Please log in" }, { status: 401 });
+      return NextResponse.json({ error: "Please log in to delete" }, { status: 401 });
     }
 
-    // Admins can delete anything. Users can only delete if it's in reviews.
-    const isReviewFolder = folder === "ecom/reviews";
-    if (user.role !== "admin" && user.role !== "owner" && !isReviewFolder) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    // Only allow admins and owners to delete
+    if (user.role !== "admin" && user.role !== "owner") {
+      return NextResponse.json({ error: "Access denied. Only admins can delete files." }, { status: 403 });
     }
-
+    // Check if publicId is provided
     if (!publicId) {
-      return NextResponse.json(
-        { error: "No publicId provided" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "No publicId provided" }, { status: 400 });
+    }
+    
+    // Delete from Cloudinary
+    const result = await deleteFromCloudinary(publicId, resourceType || "image");
+    
+    console.log(result)
+    if (!result) {
+      return NextResponse.json({ error: "Failed to delete file" }, { status: 500 });
     }
 
-    const ok = await deleteFromCloudinary(publicId, resourceType || "image");
-    if (ok) {
-      return NextResponse.json({ message: "Deleted" });
-    } else {
-      return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
-    }
+    return NextResponse.json({ 
+      success: true, 
+      message: "File deleted successfully",
+      result: result
+    });
+
   } catch (error: any) {
+    console.error("Delete error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

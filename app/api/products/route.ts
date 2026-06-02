@@ -3,56 +3,247 @@ import connectDB from "@/utils/db";
 import Product from "@/models/Product";
 import Category from "@/models/Category";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import mongoose from "mongoose";
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
+
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
-    const sort = searchParams.get("sort"); // e.g. "name-asc", "name-desc", "newest", "oldest"
+    const sort = searchParams.get("sort");
+    const search = searchParams.get("search") || "";
+    const page = Number(searchParams.get("page")) || 1;
+    const limit = Number(searchParams.get("limit")) || 10;
+    const skip = (page - 1) * limit;
 
+    // =========================
+    // Query
+    // =========================
     let query: any = {};
-    if (category) query.category = category;
 
-    // Default sort by newest first (createdAt descending)
+    // Category Filter - Fix: Convert category name to ObjectId
+    if (category && category !== "All" && category !== "undefined" && category !== "null") {
+      // First check if the category parameter is a valid ObjectId
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        // If it's a valid ObjectId, use it directly
+        query.category = category;
+      } else {
+        // If it's a category name, find the category first
+        const categoryDoc = await Category.findOne({ 
+          name: { $regex: new RegExp(`^${category}$`, "i") } 
+        });
+        
+        if (categoryDoc) {
+          query.category = categoryDoc._id;
+        } else {
+          // If no category found, return empty results
+          return NextResponse.json({
+            success: true,
+            products: [],
+            totalProducts: 0,
+            currentPage: page,
+            totalPages: 0,
+            hasMore: false,
+          });
+        }
+      }
+    }
+
+    // =========================
+    // Search
+    // =========================
+    if (search) {
+      query.name = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
+    // =========================
+    // Sort
+    // =========================
     let sortOption: any = { createdAt: -1 };
-    if (sort === "name-asc") sortOption = { name: 1 };
-    else if (sort === "name-desc") sortOption = { name: -1 };
-    else if (sort === "oldest") sortOption = { createdAt: 1 };
-    // "newest" is the default, so no extra condition
+    if (sort === "name-asc") {
+      sortOption = { name: 1 };
+    } else if (sort === "name-desc") {
+      sortOption = { name: -1 };
+    } else if (sort === "oldest") {
+      sortOption = { createdAt: 1 };
+    }
 
+    // =========================
+    // Products
+    // =========================
     const products = await Product.find(query)
+      .select("name images description stock category price")
       .populate("category")
-      .sort(sortOption);
-    return NextResponse.json(products);
+      .sort(sortOption)
+      .lean()
+      .skip(skip)
+      .limit(limit);
+
+    // =========================
+    // Total Count
+    // =========================
+    const totalProducts = await Product.countDocuments(query);
+    const totalPages = Math.ceil(totalProducts / limit);
+
+    return NextResponse.json({
+      success: true,
+      products,
+      totalProducts,
+      totalPages,
+      currentPage: page,
+      hasMore: skip + products.length < totalProducts,
+    });
+
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error fetching products:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message || "Failed to fetch products",
+      },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
+  const products =[
+  {
+    "name": "0.1KW / 100W"
+  },
+  {
+    "name": "0.2KW / 200W"
+  },
+  {
+    "name": "0.4KW / 0.5HP"
+  },
+  {
+    "name": "0.75KW / 1HP"
+  },
+  {
+    "name": "1.5KW / 2HP"
+  },
+  {
+    "name": "2.2KW / 3HP"
+  },
+  {
+    "name": "3.7KW / 5HP"
+  },
+  {
+    "name": "5.5KW / 7.5HP"
+  },
+  {
+    "name": "7.5KW / 10HP"
+  },
+  {
+    "name": "11KW / 15HP"
+  },
+  {
+    "name": "15KW / 20HP"
+  },
+  {
+    "name": "18.5KW / 25HP"
+  },
+  {
+    "name": "22KW / 30HP"
+  },
+  {
+    "name": "30KW / 40HP"
+  },
+  {
+    "name": "37KW / 50HP"
+  },
+  {
+    "name": "45KW / 60HP"
+  },
+  {
+    "name": "55KW / 75HP"
+  },
+  {
+    "name": "75KW / 100HP"
+  },
+  {
+    "name": "90KW / 125HP"
+  },
+  {
+    "name": "110KW / 150HP"
+  },
+  {
+    "name": "132KW / 175HP"
+  },
+  {
+    "name": "160KW / 215HP"
+  },
+  {
+    "name": "185KW / 250HP"
+  },
+  {
+    "name": "220KW / 300HP"
+  },
+  {
+    "name": "280KW / 375HP"
+  },
+  {
+    "name": "315KW / 420HP"
+  },
+  {
+    "name": "355KW / 475HP"
+  },
+  {
+    "name": "450KW / 600HP"
+  }
+]
+
   try {
     await connectDB();
-    const user = getUserFromRequest(req);
+    const body = await request.json();
+    console.log("body",body)
+    console.log("Received invoice data:", body.generateAllCategories);
+    console.log("Received invoice data:", body.generateAllCategories === true);
+    // Check if generateAllCategories is true
+    if (body.generateAllCategories === true) {
+      // Your products list from products.json
 
-    if (!user || (user.role !== "admin" && user.role !== "owner")) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      const voltageVariants = ["440V", "220V"];
+      const finalProducts = [];
+      // Loop through products
+      for (const product of products) {
+        // Loop through voltages
+        for (const voltage of voltageVariants) {
+          finalProducts.push({
+            name: `${body.name} ${product.name} ${voltage}`,
+            description: `${body.description} ${product.name} ${voltage}`,
+            category: body.category,
+            stock: body.stock,
+            images: body.images || [],
+          });
+        }
+      }
+
+      // Save all generated products
+      const savedProducts = await Product.insertMany(finalProducts);
+      return NextResponse.json(
+        {
+          success: true,
+          message: `${savedProducts.length} products created`,
+          products: savedProducts,
+        },
+        { status: 201 },
+      );
+    } else {
+      // Simple: Save single product as is
+      const product = await Product.create(body);
+      return NextResponse.json(product, { status: 201 });
     }
-
-    const data = await req.json();
-    // No price field expected
-    const product = await Product.create(data);
-
-    // Add product to category's products array
-    if (data.category) {
-      await Category.findByIdAndUpdate(data.category, {
-        $addToSet: { products: product._id },
-      });
-    }
-
-    return NextResponse.json(product);
-  } catch (error: any) {
-    console.log(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("Error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }
