@@ -8,6 +8,7 @@ import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
 import User from "@/models/User";
 import "@/models/User";
+import "@/models/Category";
 
 export async function GET(req: NextRequest) {
   try {
