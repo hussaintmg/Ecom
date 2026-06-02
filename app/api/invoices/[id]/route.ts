@@ -7,12 +7,13 @@ import { getUserFromRequest } from "@/utils/authHelpers";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
+    const { id } = await params;
     
-    const invoice = await Invoice.findById(params.id)
+    const invoice = await Invoice.findById(id)
       .populate("product", "name price images stock description")
       .populate("category", "name")
       .populate("soldBy", "name email role");
@@ -40,10 +41,11 @@ export async function GET(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
+    const { id } = await params;
     
     const user = getUserFromRequest(req);
     if (!user || (user.role !== "admin" && user.role !== "owner")) {
@@ -53,7 +55,7 @@ export async function DELETE(
       );
     }
     
-    const invoice = await Invoice.findByIdAndDelete(params.id);
+    const invoice = await Invoice.findByIdAndDelete(id);
     
     if (!invoice) {
       return NextResponse.json(
