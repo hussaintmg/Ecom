@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category");
     const sort = searchParams.get("sort");
     const search = searchParams.get("search") || "";
+    const stock = searchParams.get("stock");
     const page = Number(searchParams.get("page")) || 1;
     const limit = Number(searchParams.get("limit")) || 10;
     const skip = (page - 1) * limit;
@@ -21,6 +22,15 @@ export async function GET(req: NextRequest) {
     // Query
     // =========================
     let query: any = {};
+
+    // =========================
+    // Stock Filter
+    // =========================
+    if (stock === "InStock") {
+      query.stock = { $gt: 0 };
+    } else if (stock === "OutOfStock") {
+      query.stock = 0;
+    }
 
     // Category Filter - Fix: Convert category name to ObjectId
     if (category && category !== "All" && category !== "undefined" && category !== "null") {
@@ -42,6 +52,7 @@ export async function GET(req: NextRequest) {
             success: true,
             products: [],
             totalProducts: 0,
+            totalStock: 0,
             currentPage: page,
             totalPages: 0,
             hasMore: false,
@@ -89,11 +100,26 @@ export async function GET(req: NextRequest) {
     const totalProducts = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalProducts / limit);
 
+    // =========================
+    // Total Stock Calculation
+    // =========================
+    const stockResult = await Product.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalStock: { $sum: "$stock" }
+        }
+      }
+    ]);
+    const totalStock = stockResult.length > 0 ? stockResult[0].totalStock : 0;
+
     return NextResponse.json({
       success: true,
       products,
       totalProducts,
       totalPages,
+      totalStock,
       currentPage: page,
       hasMore: skip + products.length < totalProducts,
     });

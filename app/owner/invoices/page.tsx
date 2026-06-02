@@ -49,6 +49,8 @@ const InvoicesInner = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
+  const [prevSearch, setPrevSearch] = useState(searchQuery || "");
+  const [prevFilters, setPrevFilters] = useState({ filterProduct, filterCategory, filterStart, filterEnd });
 
   // Load initial data
   useEffect(() => {
@@ -56,29 +58,48 @@ const InvoicesInner = () => {
     fetchCategories();
   }, [fetchProducts, fetchCategories]);
 
-  // Fetch invoices when filters change
+  // Fetch invoices when filters change with proper debouncing
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
+      // Check if anything actually changed
+      const searchChanged = localSearch !== prevSearch;
+      const filtersChanged = 
+        filterProduct !== prevFilters.filterProduct ||
+        filterCategory !== prevFilters.filterCategory ||
+        filterStart !== prevFilters.filterStart ||
+        filterEnd !== prevFilters.filterEnd;
+      
+      if (searchChanged || filtersChanged) {
+        setPrevSearch(localSearch);
+        setPrevFilters({ filterProduct, filterCategory, filterStart, filterEnd });
+        fetchInvoices(1, localSearch, {
+          product: filterProduct,
+          category: filterCategory,
+          startDate: filterStart,
+          endDate: filterEnd,
+        });
       }
-      fetchInvoices(currentPage, localSearch, {
-        product: filterProduct,
-        category: filterCategory,
-        startDate: filterStart,
-        endDate: filterEnd,
-      });
-    }, 500);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [
-    currentPage,
     localSearch,
     filterProduct,
     filterCategory,
     filterStart,
     filterEnd,
+    fetchInvoices,
   ]);
+
+  // Handle page changes
+  useEffect(() => {
+    fetchInvoices(currentPage, prevSearch, {
+      product: filterProduct,
+      category: filterCategory,
+      startDate: filterStart,
+      endDate: filterEnd,
+    });
+  }, [currentPage, fetchInvoices]);
 
   const handleApplyFilters = () => {
     setCurrentPage(1);

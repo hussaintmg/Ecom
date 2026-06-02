@@ -27,22 +27,29 @@ const SellInner = () => {
   const [selling, setSelling] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
+  const [prevSearch, setPrevSearch] = useState(searchQuery || "");
 
   // Bill modal state
   const [showBillModal, setShowBillModal] = useState(false);
   const [lastBillData, setLastBillData] = useState<any>(null);
 
-  // Fetch products when dependencies change
+  // Fetch products when dependencies change with proper debouncing
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
+      // Only fetch if search actually changed
+      if (localSearch !== prevSearch) {
+        setPrevSearch(localSearch);
+        fetchProducts(1, localSearch);
       }
-      fetchProducts(currentPage, localSearch);
-    }, 500);
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [currentPage, localSearch, searchQuery, setSearchQuery, fetchProducts]);
+  }, [localSearch, fetchProducts]);
+
+  // Handle page changes
+  useEffect(() => {
+    fetchProducts(currentPage, prevSearch);
+  }, [currentPage, fetchProducts]);
 
   // Initial fetch
   useEffect(() => {

@@ -58,7 +58,7 @@ const ProductsInner = () => {
     selectedCategory,
     setSelectedCategory,
   } = useProducts();
-  const { categories } = useCategories();
+  const { categories, fetchCategories } = useCategories();
 
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -67,26 +67,40 @@ const ProductsInner = () => {
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [localCategory, setLocalCategory] = useState(selectedCategory);
+  const [prevSearch, setPrevSearch] = useState(searchQuery);
+  const [prevCategory, setPrevCategory] = useState(selectedCategory);
 
-  // Fetch products when dependencies change
+  // Fetch categories on mount
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  // Fetch products when dependencies change with proper debouncing
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
+      // Only fetch if search or category actually changed
+      const searchChanged = localSearch !== prevSearch;
+      const categoryChanged = localCategory !== prevCategory;
+      
+      if (searchChanged || categoryChanged) {
+        setPrevSearch(localSearch);
+        setPrevCategory(localCategory);
+        fetchProducts(1, localSearch, localCategory);
       }
-      if (localCategory !== selectedCategory) {
-        setSelectedCategory(localCategory);
-      }
-      fetchProducts(currentPage, localSearch, localCategory);
-    }, 500);
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [currentPage, localSearch, localCategory]);
+  }, [localSearch, localCategory, fetchProducts]);
+
+  // Handle page changes
+  useEffect(() => {
+    fetchProducts(currentPage, prevSearch, prevCategory);
+  }, [currentPage, fetchProducts]);
 
   // Initial fetch
   useEffect(() => {
     fetchProducts(1, "", "All");
-  }, []);
+  }, [fetchProducts]);
 
   const handleDelete = async (id: string) => {
     setDeleting(id);

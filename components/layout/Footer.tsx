@@ -8,7 +8,7 @@ const Footer = () => {
       <div className="container mx-auto px-4 md:px-8">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-4">
           <div className="flex flex-col gap-4">
-            <span className="text-2xl font-black tracking-tighter">🛍️ {webData.websiteName}</span>
+            <span className="text-2xl font-black tracking-tighter" suppressHydrationWarning>🛍️ {webData.websiteName}</span>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {webData.tagline}
             </p>

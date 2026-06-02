@@ -54,7 +54,7 @@ const Navbar = () => {
             <Menu size={20} />
           </button>
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight">
+            <span className="text-xl font-bold tracking-tight" suppressHydrationWarning>
               🛍️ {webData.websiteName}
             </span>
           </Link>
@@ -150,7 +150,7 @@ const Navbar = () => {
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b p-5">
-                <span className="text-lg font-black tracking-tight">
+                <span className="text-lg font-black tracking-tight" suppressHydrationWarning>
                   🛍️ {webData.websiteName}
                 </span>
 

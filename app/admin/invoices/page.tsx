@@ -23,6 +23,7 @@ const InvoicesInner = () => {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
+  const [prevFilters, setPrevFilters] = useState({ filterProduct, filterCategory, filterStart, filterEnd });
 
   const [refreshing, setRefreshing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -32,6 +33,29 @@ const InvoicesInner = () => {
     fetchCategories();
     fetchInvoices();
   }, [fetchProducts, fetchCategories, fetchInvoices]);
+
+  // Debounce filter changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const filtersChanged =
+        filterProduct !== prevFilters.filterProduct ||
+        filterCategory !== prevFilters.filterCategory ||
+        filterStart !== prevFilters.filterStart ||
+        filterEnd !== prevFilters.filterEnd;
+
+      if (filtersChanged) {
+        setPrevFilters({ filterProduct, filterCategory, filterStart, filterEnd });
+        fetchInvoices(1, "", {
+          product: filterProduct,
+          category: filterCategory,
+          startDate: filterStart,
+          endDate: filterEnd,
+        });
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [filterProduct, filterCategory, filterStart, filterEnd, fetchInvoices]);
 
   const handleApplyFilters = () => {
     fetchInvoices(1, "", {
