@@ -2,17 +2,18 @@
 import React from "react";
 import useSWR from "swr";
 import { Package, ShoppingBag, Grid, MessageSquare } from "lucide-react";
+import { useProducts } from "@/context/ProductContext";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const DashboardSummary = () => {
-  const { data: products } = useSWR("/api/products", fetcher);
+  const { products , totalProducts } = useProducts();
   const { data: orders } = useSWR("/api/orders", fetcher);
   const { data: categories } = useSWR("/api/categories", fetcher);
   const { data: enquiries } = useSWR("/api/enquiries", fetcher);
 
   const stats = [
-    { name: "Total Products", value: products?.length || 0, icon: Package },
+    { name: "Total Products", value: totalProducts || 0, icon: Package },
     { name: "Categories", value: categories?.length || 0, icon: Grid },
   ];
 

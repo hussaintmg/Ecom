@@ -9,13 +9,14 @@ import {
   Users2,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useProducts } from "@/context/ProductContext";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const OwnerDashboardSummary = () => {
   const [admins, setAdmins] = useState([]);
   const { allAdmins } = useAuth();
-  const { data: products } = useSWR("/api/products", fetcher);
+  const { products, totalProducts } = useProducts();
   const { data: orders } = useSWR("/api/orders", fetcher);
   const { data: categories } = useSWR("/api/categories", fetcher);
   const { data: enquiries } = useSWR("/api/enquiries", fetcher);
@@ -29,7 +30,7 @@ const OwnerDashboardSummary = () => {
   }, []);
 
   const stats = [
-    { name: "Global Products", value: products?.length || 0, icon: Package },
+    { name: "Global Products", value: totalProducts, icon: Package },
     { name: "Market Categories", value: categories?.length || 0, icon: Grid },
     { name: "Admins", value: admins?.length || 0, icon: Users2 },
   ];

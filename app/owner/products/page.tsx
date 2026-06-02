@@ -221,6 +221,91 @@ const ProductsInner = () => {
         </div>
       ) : (
         <>
+          {/* Mobile Card View */}
+          <div className="md:hidden grid grid-cols-1 gap-4">
+            {products.map((p, idx) => (
+              <div
+                key={p._id}
+                className="border rounded-xl bg-card p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    {p.images?.[0]?.url ? (
+                      <img
+                        src={p.images[0].url}
+                        alt={p.name}
+                        className="w-16 h-16 rounded-lg object-cover border"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                        <ImageIcon
+                          size={20}
+                          className="text-muted-foreground"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">
+                      #{(currentPage - 1) * 10 + idx + 1}
+                    </p>
+                    <h3 className="font-semibold text-sm truncate">{p.name}</h3>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {getCategoryName(p) || "—"}
+                    </p>
+                    <div className="mt-2">
+                      <StockBadge stock={p.stock} />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-1 text-xs"
+                    onClick={() => router.push(`/owner/products/${p._id}`)}
+                  >
+                    <Settings size={12} /> Manage
+                  </Button>
+                  {deleteConfirm === p._id ? (
+                    <div className="flex gap-1 flex-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive font-bold text-xs flex-1"
+                        disabled={deleting === p._id}
+                        onClick={() => handleDelete(p._id)}
+                      >
+                        {deleting === p._id ? (
+                          <RefreshCw size={12} className="animate-spin" />
+                        ) : (
+                          "Confirm"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDeleteConfirm(null)}
+                      >
+                        <X size={12} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setDeleteConfirm(p._id)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
           <div className="hidden md:block overflow-hidden rounded-2xl border bg-card shadow-sm">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -318,6 +403,7 @@ const ProductsInner = () => {
             </table>
           </div>
 
+          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-4 mt-6 pt-4 border-t">
               <div className="text-sm text-muted-foreground">
