@@ -6,6 +6,8 @@ import Invoice from "@/models/Invoice";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import User from "@/models/User";
+import "@/models/User";
 
 export async function GET(req: NextRequest) {
   try {
