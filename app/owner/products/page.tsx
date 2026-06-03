@@ -52,12 +52,90 @@ const ProductsInner = () => {
     loading,
     fetchProducts,
     deleteProduct,
+    deleteProductsBulk,
     setCurrentPage,
     searchQuery,
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
   } = useProducts();
+
+  const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [loadingAllPages, setLoadingAllPages] = useState(false);
+
+  const isSelected = (id: string) => selectedProducts.some((p) => p._id === id);
+
+  const toggleSelectProduct = (product: any) => {
+    setSelectedProducts((prev) => {
+      const exists = prev.some((p) => p._id === product._id);
+      if (exists) {
+        return prev.filter((p) => p._id !== product._id);
+      } else {
+        return [...prev, product];
+      }
+    });
+  };
+
+  const isCurrentPageAllSelected = products.length > 0 && products.every((p) => isSelected(p._id));
+
+  const handleToggleSelectPage = () => {
+    if (isCurrentPageAllSelected) {
+      setSelectedProducts((prev) =>
+        prev.filter((p) => !products.some((pageP) => pageP._id === p._id))
+      );
+    } else {
+      setSelectedProducts((prev) => {
+        const toAdd = products.filter((pageP) => !prev.some((p) => p._id === pageP._id));
+        return [...prev, ...toAdd];
+      });
+    }
+  };
+
+  const isAllPagesSelected = selectedProducts.length > 0 && selectedProducts.length >= totalProducts;
+
+  const handleToggleSelectAllPages = async () => {
+    if (isAllPagesSelected) {
+      setSelectedProducts([]);
+    } else {
+      setLoadingAllPages(true);
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.append("page", "1");
+        queryParams.append("limit", "10000");
+        if (localSearch) queryParams.append("search", localSearch);
+        if (localCategory && localCategory !== "All") queryParams.append("category", localCategory);
+        
+        const res = await fetch(`/api/products?${queryParams}`);
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setSelectedProducts(data.products || []);
+        } else {
+          alert(data.message || "Failed to select all products");
+        }
+      } catch (err: any) {
+        console.error(err);
+        alert("Network error fetching all products for selection");
+      } finally {
+        setLoadingAllPages(false);
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProducts.length === 0) return;
+    if (!confirm(`Are you sure you want to delete all ${selectedProducts.length} selected products? This will clear stock logs and Cloudinary images too.`)) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    const ids = selectedProducts.map((p) => p._id);
+    const ok = await deleteProductsBulk(ids);
+    if (ok) {
+      setSelectedProducts([]);
+    }
+    setBulkDeleting(false);
+  };
   const { categories, fetchCategories } = useCategories();
 
   const [showForm, setShowForm] = useState(false);
@@ -225,6 +303,36 @@ const ProductsInner = () => {
         </div>
       </div>
 
+      {totalProducts > 0 && (
+        <div className="flex gap-3 flex-wrap bg-muted/40 p-3 rounded-xl border items-center justify-between">
+          <div className="flex gap-2 items-center flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToggleSelectPage}
+              className="text-xs font-semibold"
+            >
+              {isCurrentPageAllSelected ? "Deselect All" : "Select All"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToggleSelectAllPages}
+              disabled={loadingAllPages}
+              className="text-xs font-semibold gap-1.5"
+            >
+              {loadingAllPages && <RefreshCw size={12} className="animate-spin" />}
+              {isAllPagesSelected ? "Deselect on All Pages" : "Select on All Pages"}
+            </Button>
+          </div>
+          {selectedProducts.length > 0 && (
+            <span className="text-xs font-bold text-muted-foreground bg-card px-2.5 py-1 rounded-lg border">
+              Selected: {selectedProducts.length}
+            </span>
+          )}
+        </div>
+      )}
+
       {totalProducts === 0 && !loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card border-dashed">
           <Package size={40} className="opacity-30" />
@@ -237,41 +345,51 @@ const ProductsInner = () => {
         <>
           {/* Mobile Card View */}
           <div className="md:hidden grid grid-cols-1 gap-4">
-            {products.map((p, idx) => (
-              <div
-                key={p._id}
-                className="border rounded-xl bg-card p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    {p.images?.[0]?.url ? (
-                      <img
-                        src={p.images[0].url}
-                        alt={p.name}
-                        className="w-16 h-16 rounded-lg object-cover border"
+            {products.map((p, idx) => {
+              const checked = isSelected(p._id);
+              return (
+                <div
+                  key={p._id}
+                  className={`border rounded-xl bg-card p-4 hover:shadow-md transition-shadow relative ${checked ? "border-primary/40 bg-primary/5" : ""}`}
+                >
+                  <div className="flex gap-4 items-start">
+                    <div className="pt-1.5 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelectProduct(p)}
+                        className="rounded border-gray-300 text-primary focus:ring-primary cursor-pointer w-4.5 h-4.5"
                       />
-                    ) : (
-                      <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
-                        <ImageIcon
-                          size={20}
-                          className="text-muted-foreground"
+                    </div>
+                    <div className="flex-shrink-0">
+                      {p.images?.[0]?.url ? (
+                        <img
+                          src={p.images[0].url}
+                          alt={p.name}
+                          className="w-16 h-16 rounded-lg object-cover border"
                         />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                          <ImageIcon
+                            size={20}
+                            className="text-muted-foreground"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">
+                        #{(currentPage - 1) * 10 + idx + 1}
+                      </p>
+                      <h3 className="font-semibold text-sm truncate">{p.name}</h3>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {getCategoryName(p) || "—"}
+                      </p>
+                      <div className="mt-2">
+                        <StockBadge stock={p.stock} />
                       </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-muted-foreground">
-                      #{(currentPage - 1) * 10 + idx + 1}
-                    </p>
-                    <h3 className="font-semibold text-sm truncate">{p.name}</h3>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {getCategoryName(p) || "—"}
-                    </p>
-                    <div className="mt-2">
-                      <StockBadge stock={p.stock} />
                     </div>
                   </div>
-                </div>
                 <div className="flex gap-2 mt-4">
                   <Button
                     variant="outline"
@@ -316,7 +434,8 @@ const ProductsInner = () => {
                   )}
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
 
           {/* Desktop Table View */}
@@ -324,6 +443,14 @@ const ProductsInner = () => {
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 <tr>
+                  <th className="px-6 py-4 w-12 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isCurrentPageAllSelected}
+                      onChange={handleToggleSelectPage}
+                      className="rounded border-gray-300 text-primary focus:ring-primary cursor-pointer w-4.5 h-4.5"
+                    />
+                  </th>
                   <th className="px-6 py-4">#</th>
                   <th className="px-6 py-4">Image</th>
                   <th className="px-6 py-4">Name</th>
@@ -333,14 +460,24 @@ const ProductsInner = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {products.map((p, idx) => (
-                  <tr
-                    key={p._id}
-                    className="hover:bg-muted/20 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-muted-foreground text-xs">
-                      {(currentPage - 1) * 10 + idx + 1}
-                    </td>
+                {products.map((p, idx) => {
+                  const checked = isSelected(p._id);
+                  return (
+                    <tr
+                      key={p._id}
+                      className={`hover:bg-muted/20 transition-colors ${checked ? "bg-primary/5" : ""}`}
+                    >
+                      <td className="px-6 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSelectProduct(p)}
+                          className="rounded border-gray-300 text-primary focus:ring-primary cursor-pointer w-4.5 h-4.5"
+                        />
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground text-xs">
+                        {(currentPage - 1) * 10 + idx + 1}
+                      </td>
                     <td className="px-6 py-3">
                       {p.images?.[0]?.url ? (
                         <img
@@ -411,11 +548,69 @@ const ProductsInner = () => {
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Bulk Delete Panel */}
+          {selectedProducts.length > 0 && (
+            <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm border-red-500/20 mt-4">
+              <div className="flex justify-between items-center flex-wrap gap-3">
+                <div>
+                  <h3 className="font-bold text-base text-red-600 flex items-center gap-2">
+                    <Trash2 size={18} /> Selected Products to Delete ({selectedProducts.length})
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    These products will be permanently deleted from database, Cloudinary images will be removed, and stock logs cleared.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedProducts([])}
+                    className="text-xs"
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-2 text-white bg-red-600 hover:bg-red-700 font-bold text-xs"
+                    disabled={bulkDeleting}
+                    onClick={handleBulkDelete}
+                  >
+                    {bulkDeleting ? (
+                      <RefreshCw size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={12} />
+                    )}
+                    Delete All
+                  </Button>
+                </div>
+              </div>
+
+              {/* Show selected products list */}
+              <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-1">
+                {selectedProducts.map((p) => (
+                  <span
+                    key={p._id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-red-500/10 text-red-700 border border-red-500/20"
+                  >
+                    {p.name}
+                    <button
+                      onClick={() => toggleSelectProduct(p)}
+                      className="hover:text-red-950 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Pagination */}
           {totalPages > 1 && (

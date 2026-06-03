@@ -40,6 +40,7 @@ interface ProductContextType {
   ) => Promise<void>;
   fetchProductById: (id: string) => Promise<Product | null>;
   deleteProduct: (id: string) => Promise<boolean>;
+  deleteProductsBulk: (ids: string[]) => Promise<boolean>;
   addProduct: (data: any) => Promise<boolean>;
   editProduct: (id: string, data: any) => Promise<boolean>;
   refresh: () => Promise<void>;
@@ -206,6 +207,31 @@ export const ProductProvider = ({
     }
   };
 
+  const deleteProductsBulk = async (ids: string[]): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/products/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      
+      const json = await res.json();
+      
+      if (res.ok) {
+        toast.success("Products deleted successfully!");
+        await fetchProducts(currentPage, searchQuery, selectedCategory);
+        return true;
+      }
+      
+      toast.error(json.error || json.message || "Failed to delete products");
+      return false;
+    } catch (error: any) {
+      console.error("Bulk delete products error:", error);
+      toast.error("Network error deleting products");
+      return false;
+    }
+  };
+
   const uploadMedia = useCallback(
     async (
       file: string,
@@ -283,6 +309,7 @@ export const ProductProvider = ({
         fetchProducts,
         fetchProductById,
         deleteProduct,
+        deleteProductsBulk,
         addProduct,
         editProduct,
         refresh,
