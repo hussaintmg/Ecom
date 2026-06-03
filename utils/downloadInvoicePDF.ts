@@ -100,7 +100,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
       const textBlock = `
         <div style="flex:1;margin-left:12px;">
           <div style="font-weight:600;color:#111827;font-size:13px;margin-bottom:4px;">${esc(item.productName)}</div>
-          ${noteDesc && noteDesc !== "No description" && noteDesc !== "" 
+          ${noteDesc && noteDesc.trim() !== "No description" && noteDesc.trim() !== "" 
             ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">Desc: ${noteDesc}</div>` : ""}
         </div>`;
 
@@ -168,9 +168,12 @@ export const downloadInvoicePDF = async (invoice: any) => {
             <tbody>${rows || '<tr><td colspan="3" style="padding:40px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
           </table>
 
-          <!-- TOTAL -->
-          <div style="text-align:right;padding-top:16px;border-top:2px solid #1f2937;margin-bottom:24px;">
-            <div style="font-size:18px;font-weight:700;color:#111827;">
+          <!-- TOTAL & CUSTOMER NAME -->
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:2px solid #1f2937;margin-bottom:24px;">
+            <div style="font-size:14px;font-weight:600;color:#374151;text-align:left;">
+              Customer: <span style="font-weight:700;color:#111827;">${esc(invoice.customerName || "Walk-in Customer")}</span>
+            </div>
+            <div style="font-size:18px;font-weight:700;color:#111827;text-align:right;">
               Total Payable: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
             </div>
           </div>

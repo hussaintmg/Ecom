@@ -9,6 +9,8 @@ const InvoiceSchema = new Schema(
     salePrice: { type: Number },
     description: { type: String },
 
+    customerName: { type: String, required: true },
+
     // Multi-product fields
     products: [
       {
@@ -16,7 +18,7 @@ const InvoiceSchema = new Schema(
         category: { type: Schema.Types.ObjectId, ref: "Category", required: true },
         quantity: { type: Number, required: true },
         salePrice: { type: Number, required: true }, // Total price for this item quantity
-        description: { type: String, required: true },
+        description: { type: String, required: false },
       },
     ],
     totalAmount: { type: Number },

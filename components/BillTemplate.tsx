@@ -15,6 +15,7 @@ export interface BillProductItem {
 export interface BillData {
   invoiceNo: string;
   date: string;
+  customerName?: string;
   products?: BillProductItem[];
   totalAmount?: number;
   productName?: string;
@@ -346,7 +347,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                             {esc(item.productName)}
                           </div>
                           {item.description &&
-                            item.description !== "No description" && (
+                            item.description.trim() !== "" &&
+                            item.description.trim() !== "No description" && (
                               <div
                                 style={{
                                   fontSize: "10px",
@@ -392,17 +394,29 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             </tbody>
           </table>
 
-          {/* Total */}
+          {/* Total & Customer Name */}
           <div
             style={{
-              textAlign: "right",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
               paddingTop: "16px",
               borderTop: "2px solid #1f2937",
               marginBottom: "24px",
             }}
           >
             <div
-              style={{ fontSize: "18px", fontWeight: "700", color: "#111827" }}
+              style={{
+                fontSize: "14px",
+                fontWeight: "600",
+                color: "#374151",
+                textAlign: "left",
+              }}
+            >
+              Customer: <span style={{ fontWeight: "700", color: "#111827" }}>{esc(data.customerName || "Walk-in Customer")}</span>
+            </div>
+            <div
+              style={{ fontSize: "18px", fontWeight: "700", color: "#111827", textAlign: "right" }}
             >
               Total Payable:{" "}
               <span style={{ color: "#059669" }}>

@@ -104,6 +104,7 @@ export async function GET(req: NextRequest) {
         }];
         obj.totalAmount = obj.salePrice;
       }
+      obj.customerName = obj.customerName || "Walk-in Customer";
       return obj;
     });
 
@@ -139,7 +140,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { productId, quantity, salePrice, description, products } = body;
+    const { productId, quantity, salePrice, description, products, customerName } = body;
+
+    if (!customerName || !customerName.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Customer name is required" },
+        { status: 400 }
+      );
+    }
 
     // Support both single item input and products array
     const items = products || [
@@ -160,9 +168,9 @@ export async function POST(req: NextRequest) {
     for (const item of items) {
       const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice, description: itemDesc } = item;
 
-      if (!itemProductId || !itemQty || !itemPrice || !itemDesc) {
+      if (!itemProductId || !itemQty || !itemPrice) {
         return NextResponse.json(
-          { success: false, error: "Product, quantity, sale price, and description are required for all items" },
+          { success: false, error: "Product, quantity, and sale price are required for all items" },
           { status: 400 }
         );
       }
@@ -203,7 +211,7 @@ export async function POST(req: NextRequest) {
         productObj: product,
         qty,
         price,
-        description: itemDesc,
+        description: itemDesc || "",
       });
 
       calculatedTotalAmount += price;
@@ -224,7 +232,7 @@ export async function POST(req: NextRequest) {
       await StockLog.create({
         product: productObj._id,
         change: -qty,
-        description: `Manual Sell: ${itemDesc}`,
+        description: `Manual Sell${itemDesc ? `: ${itemDesc}` : ""}`,
         resultingStock: newStock,
         performedBy: user.id,
       });
@@ -235,12 +243,13 @@ export async function POST(req: NextRequest) {
         category: productObj.category,
         quantity: qty,
         salePrice: price,
-        description: itemDesc,
+        description: itemDesc || "",
       });
     }
 
     // 3. Create Multi-Product Invoice
     const invoice = await Invoice.create({
+      customerName: customerName.trim(),
       products: invoiceItems,
       totalAmount: calculatedTotalAmount,
       soldBy: user.id,
@@ -265,6 +274,7 @@ export async function POST(req: NextRequest) {
       }];
       returnObj.totalAmount = returnObj.salePrice;
     }
+    returnObj.customerName = returnObj.customerName || "Walk-in Customer";
 
     return NextResponse.json({
       success: true,

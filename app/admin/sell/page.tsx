@@ -32,6 +32,7 @@ const SellInner = () => {
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
   const [description, setDescription] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [selling, setSelling] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
@@ -138,11 +139,6 @@ const SellInner = () => {
       return;
     }
 
-    if (!description.trim()) {
-      alert("Description is required");
-      return;
-    }
-
     // Accumulative stock check: sum of this product's quantities in other cart entries
     const existingQtyInCart = appendedProducts.reduce((sum, item, idx) => {
       if (editingIndex !== null && idx === editingIndex) return sum; // exclude current editing item
@@ -217,10 +213,15 @@ const SellInner = () => {
 
   const handleCheckout = async () => {
     if (appendedProducts.length === 0) return;
+    if (!customerName.trim()) {
+      alert("Customer Name is required");
+      return;
+    }
 
     setSelling(true);
 
     const payload = {
+      customerName: customerName.trim(),
       products: appendedProducts.map(p => ({
         productId: p.productId,
         quantity: p.quantity,
@@ -245,6 +246,7 @@ const SellInner = () => {
       setLastBillData({
         invoiceNo,
         date,
+        customerName: customerName.trim(),
         products: appendedProducts.map(p => ({
           productName: p.product.name,
           quantity: p.quantity,
@@ -265,6 +267,7 @@ const SellInner = () => {
       setSalePrice("");
       setDescription("");
       setSelectedProductId("");
+      setCustomerName("");
       await fetchProducts(currentPage, localSearch, "All", stockFilter); // Refresh stock
     }
     setSelling(false);
@@ -556,13 +559,12 @@ const SellInner = () => {
 
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Description / Memo *
+                Description / Memo (Optional)
               </span>
               <textarea
                 className={`${inputClass} min-h-[80px] resize-y`}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                required
                 placeholder="Walk-in customer sale details..."
               />
             </label>
@@ -650,6 +652,20 @@ const SellInner = () => {
                     </tbody>
                   </table>
                 </div>
+
+                <label className="flex flex-col gap-1.5 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Customer Name *
+                  </span>
+                  <input
+                    type="text"
+                    className={inputClass}
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    required
+                    placeholder="e.g. Walk-in Customer / Client Name"
+                  />
+                </label>
 
                 <Button
                   onClick={handleCheckout}

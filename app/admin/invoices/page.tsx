@@ -261,6 +261,7 @@ const InvoicesInner = () => {
               <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 <tr>
                   <th className="px-5 py-3 whitespace-nowrap">Date</th>
+                  <th className="px-5 py-3">Customer</th>
                   <th className="px-5 py-3">Product</th>
                   <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3 bg-primary/5 text-center">Qty</th>
@@ -284,6 +285,10 @@ const InvoicesInner = () => {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
+                      </td>
+
+                      <td className="px-5 py-4 font-semibold text-foreground">
+                        {inv.customerName || "Walk-in Customer"}
                       </td>
 
                       {/* Product — portal tooltip */}
@@ -366,6 +371,9 @@ const InvoicesInner = () => {
                           tooltipLines={productNames}
                           maxChars={30}
                         />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Customer: <span className="font-semibold">{inv.customerName || "Walk-in Customer"}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         <TooltipCell

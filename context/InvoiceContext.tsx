@@ -16,6 +16,7 @@ export interface InvoiceProductItem {
 export interface InvoiceItem {
   _id: string;
   invoiceNo?: string;
+  customerName?: string;
   product?: any;
   category?: any;
   quantity?: number;
@@ -51,6 +52,7 @@ interface InvoiceContextType {
     quantity?: number;
     salePrice?: number;
     description?: string;
+    customerName?: string;
     products?: {
       productId: string;
       quantity: number;
@@ -142,6 +144,7 @@ export const InvoiceProvider = ({
     quantity?: number;
     salePrice?: number;
     description?: string;
+    customerName?: string;
     products?: {
       productId: string;
       quantity: number;
