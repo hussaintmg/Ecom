@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     const filter: any = {};
 
     if (search) {
-      filter.name = { $regex: search, $options: "i" };
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      filter.name = { $regex: `\\b${escapedSearch}`, $options: "i" };
     }
 
     if (category && category !== "All") {
