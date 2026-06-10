@@ -132,7 +132,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
         day: "2-digit", month: "2-digit", year: "numeric",
         hour: "2-digit", minute: "2-digit",
       });
-  const seller = esc(invoice.soldBy?.name || "MS Traders");
+  const seller = esc(invoice.soldBy?.name || "M S ELECTRIC AND ELECTRONICS");
 
   // 5. Clean, centered HTML with proper sizing
   const html = `
@@ -144,7 +144,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
 
           <!-- HEADER -->
           <div style="text-align:center;border-bottom:2px solid #1f2937;padding-bottom:16px;margin-bottom:24px;">
-            <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:4px;">MS Traders</div>
+            <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:4px;">M S ELECTRIC AND ELECTRONICS</div>
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Shop C15/C17, Quality Godown, Shershah</div>
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Phone: Adnan +92 333 3424083</div>
             <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">SALES INVOICE</div>

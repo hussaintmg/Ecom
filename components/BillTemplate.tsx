@@ -39,7 +39,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
     invoiceNo,
     date,
     sellerName = user?.name || "Unknown",
-    shopName = "MS Traders",
+    shopName = "M S ELECTRIC AND ELECTRONICS",
     shopAddress = "Shop C15/C17, Quality Godown, Shershah",
     shopPhone = "Adnan +92 333 3424083",
   } = data;
