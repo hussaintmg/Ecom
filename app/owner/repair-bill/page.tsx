@@ -129,29 +129,6 @@ const SellInner = () => {
     const qty = Number(quantity);
     const price = Number(salePrice);
 
-    if (qty <= 0) {
-      alert("Quantity must be greater than zero");
-      return;
-    }
-
-    if (price <= 0) {
-      alert("Sale price must be greater than zero");
-      return;
-    }
-
-    // Accumulative stock check: sum of this product's quantities in other cart entries
-    const existingQtyInCart = appendedProducts.reduce((sum, item, idx) => {
-      if (editingIndex !== null && idx === editingIndex) return sum; // exclude current editing item
-      return item.productId === selectedProduct._id ? sum + item.quantity : sum;
-    }, 0);
-
-    const totalNeeded = existingQtyInCart + qty;
-
-    if (totalNeeded > selectedProduct.stock) {
-      alert(`stock kam hai aur beche ziyada nahi sakte!\n\nAvailable Stock: ${selectedProduct.stock}\nAlready Appended: ${existingQtyInCart}\nAttempted to Add: ${qty}\nTotal required (${totalNeeded}) exceeds availability.`);
-      return;
-    }
-
     if (editingIndex !== null) {
       // Update existing item
       const updatedList = [...appendedProducts];

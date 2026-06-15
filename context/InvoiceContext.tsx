@@ -174,7 +174,7 @@ export const InvoiceProvider = ({
       const json = await res.json();
 
       if (res.ok && json.success) {
-        toast.success("Invoice created successfully & stock updated!");
+        toast.success(`Invoice created successfully${data.type!=="Repair"?" & stock updated!" : ""} `);
         // Refresh invoices after creating
         await fetchInvoices(1, searchQuery);
         return json.invoice;
