@@ -21,6 +21,11 @@ const InvoiceSchema = new Schema(
         description: { type: String, required: false },
       },
     ],
+    type: {
+      type: String,
+      enum: ["Sell", "Repair"],
+      default: "Sell",
+    },
     totalAmount: { type: Number },
     soldBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
   },

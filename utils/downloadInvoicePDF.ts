@@ -133,21 +133,29 @@ export const downloadInvoicePDF = async (invoice: any) => {
         hour: "2-digit", minute: "2-digit",
       });
   const seller = esc(invoice.soldBy?.name || "M S ELECTRIC AND ELECTRONICS");
+  const invoiceType = invoice.type || "Sell";
 
   // 5. Clean, centered HTML with proper sizing
   const html = `
     <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f9fafb;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;">
-      <div style="max-width:650px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:hidden;">
+      <div style="max-width:650px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:hidden;position:relative;">
+
+        <!-- Watermark Background -->
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-45deg);font-size:90px;font-weight:900;color:rgba(0,0,0,0.03);white-space:nowrap;pointer-events:none;user-select:none;z-index:0;">
+          ${invoiceType === "Repair" ? "REPAIR" : "SELL"}
+        </div>
 
         <!-- INNER CONTENT -->
-        <div style="padding:28px 32px;">
+        <div style="padding:28px 32px;position:relative;z-index:1;">
 
           <!-- HEADER -->
           <div style="text-align:center;border-bottom:2px solid #1f2937;padding-bottom:16px;margin-bottom:24px;">
             <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:4px;">M S ELECTRIC AND ELECTRONICS</div>
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Shop C15/C17, Quality Godown, Shershah</div>
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Phone: Adnan +92 333 3424083</div>
-            <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">SALES INVOICE</div>
+            <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">
+              ${invoiceType === "Repair" ? "REPAIR INVOICE" : "SALES INVOICE"}
+            </div>
           </div>
 
           <!-- META INFO -->

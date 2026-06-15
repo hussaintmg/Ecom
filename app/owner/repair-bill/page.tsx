@@ -227,7 +227,8 @@ const SellInner = () => {
         quantity: p.quantity,
         salePrice: p.salePrice,
         description: p.description,
-      }))
+      })),
+      type: "Repair"
     };
 
     const createdInvoice = await createInvoice(payload);
@@ -263,7 +264,7 @@ const SellInner = () => {
           productDescription: p.product?.description || "",
           productImage: p.product?.images?.[0]?.url || p.product?.images?.[0] || "",
         })),
-        type: createdInvoice.type || "Sell",
+        type: createdInvoice.type || "Repair",
         totalAmount: createdInvoice.totalAmount,
         sellerName: createdInvoice.soldBy?.name || "",
       });
@@ -297,12 +298,12 @@ const SellInner = () => {
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-3 bg-primary/10 text-primary rounded-xl">
-          <ShoppingCart size={24} />
+          <RefreshCw size={24} />
         </div>
         <div>
-          <h1 className="text-2xl font-black tracking-tight">Manual Sell Point</h1>
+          <h1 className="text-2xl font-black tracking-tight">Repair Bill Point</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Append multiple products and create a combined sales invoice
+            Append multiple products and create a combined repair invoice
           </p>
         </div>
       </div>
@@ -502,9 +503,6 @@ const SellInner = () => {
               </h2>
               {selectedProduct && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold bg-muted px-2 py-1 rounded-md text-muted-foreground">
-                    Available Stock: {selectedProduct.stock}
-                  </span>
                   {editingIndex !== null && (
                     <button 
                       type="button" 
@@ -539,7 +537,7 @@ const SellInner = () => {
             <div className="grid grid-cols-2 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Quantity Sold *
+                  Quantity Repaired *
                 </span>
                 <input
                   type="number"
@@ -553,7 +551,7 @@ const SellInner = () => {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Total Sale Price (PKR) *
+                  Total Repair Cost (PKR) *
                 </span>
                 <input
                   type="number"
@@ -704,8 +702,8 @@ const SellInner = () => {
   );
 };
 
-const AdminSellPage = () => {
+const OwnerRepairBillPage = () => {
   return <SellInner />;
 };
 
-export default AdminSellPage;
+export default OwnerRepairBillPage;

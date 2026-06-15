@@ -1,5 +1,3 @@
-// app/api/invoices/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/utils/db";
 import Invoice from "@/models/Invoice";
@@ -9,122 +7,6 @@ import { getUserFromRequest } from "@/utils/authHelpers";
 import User from "@/models/User";
 import "@/models/User";
 import "@/models/Category";
-
-export async function GET(req: NextRequest) {
-  try {
-    await connectDB();
-    
-    const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "10");
-    const search = searchParams.get("search") || "";
-    const product = searchParams.get("product");
-    const category = searchParams.get("category");
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
-    
-    const skip = (page - 1) * limit;
-
-    let query: any = {};
-    
-    // Search by product name (legacy and nested list)
-    if (search) {
-      const products = await Product.find({ 
-        name: { $regex: search, $options: "i" } 
-      }).select("_id");
-      
-      const productIds = products.map(p => p._id);
-      query.$or = [
-        { product: { $in: productIds } },
-        { "products.product": { $in: productIds } }
-      ];
-    }
-    
-    if (product) {
-      query.$or = [
-        { product: product },
-        { "products.product": product }
-      ];
-    }
-
-    if (category) {
-      const categoryFilter = {
-        $or: [
-          { category: category },
-          { "products.category": category }
-        ]
-      };
-      if (query.$or) {
-        query.$and = [
-          { $or: query.$or },
-          categoryFilter
-        ];
-        delete query.$or;
-      } else {
-        query.$or = categoryFilter.$or;
-      }
-    }
-
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
-      }
-    }
-
-    // Get total count
-    const totalInvoices = await Invoice.countDocuments(query);
-    const totalPages = Math.ceil(totalInvoices / limit);
-
-    // Get invoices with pagination and populate legacy + nested properties
-    const invoices = await Invoice.find(query)
-      .populate("product", "name price images stock description")
-      .populate("category", "name")
-      .populate("products.product", "name price images stock description")
-      .populate("products.category", "name")
-      .populate("soldBy", "name email role")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Standardize all invoices to have the products array and totalAmount
-    const formattedInvoices = invoices.map(inv => {
-      const obj = inv.toObject ? inv.toObject() : inv;
-      if (!obj.products || obj.products.length === 0) {
-        obj.products = [{
-          product: obj.product,
-          category: obj.category,
-          quantity: obj.quantity,
-          salePrice: obj.salePrice,
-          description: obj.description || "No description",
-          _id: obj._id,
-        }];
-        obj.totalAmount = obj.salePrice;
-      }
-      obj.customerName = obj.customerName || "Walk-in Customer";
-      return obj;
-    });
-
-    return NextResponse.json({
-      success: true,
-      invoices: formattedInvoices,
-      totalInvoices,
-      totalPages,
-      currentPage: page,
-      hasMore: skip + formattedInvoices.length < totalInvoices,
-    });
-    
-  } catch (error: any) {
-    console.error("GET invoices error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -200,13 +82,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (product.stock < qty) {
-        return NextResponse.json(
-          { success: false, error: `Insufficient stock for ${product.name}! Only ${product.stock} available.` },
-          { status: 400 }
-        );
-      }
-
       validatedItems.push({
         productObj: product,
         qty,
@@ -222,20 +97,6 @@ export async function POST(req: NextRequest) {
 
     for (const validated of validatedItems) {
       const { productObj, qty, price, description: itemDesc } = validated;
-
-      // Deduct stock
-      const newStock = productObj.stock - qty;
-      productObj.stock = newStock;
-      await productObj.save();
-
-      // Log Stock change
-      await StockLog.create({
-        product: productObj._id,
-        change: -qty,
-        description: `Manual Sell${itemDesc ? `: ${itemDesc}` : ""}`,
-        resultingStock: newStock,
-        performedBy: user.id,
-      });
 
       // Prepare nested invoice array element
       invoiceItems.push({

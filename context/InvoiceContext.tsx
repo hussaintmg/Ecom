@@ -25,6 +25,7 @@ export interface InvoiceItem {
   description?: string;
   products: InvoiceProductItem[];
   soldBy: any;
+  type?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -59,7 +60,8 @@ interface InvoiceContextType {
       salePrice: number;
       description: string;
     }[];
-  }) => Promise<boolean>;
+    type?: string;
+  }) => Promise<any | null>;
   getInvoiceById: (id: string) => Promise<InvoiceItem | null>;
   deleteInvoice: (id: string) => Promise<void>;
   setCurrentPage: (page: number) => void;
@@ -151,28 +153,38 @@ export const InvoiceProvider = ({
       salePrice: number;
       description: string;
     }[];
-  }): Promise<boolean> => {
+    type?: string;
+  }): Promise<any | null> => {
     try {
-      const res = await fetch("/api/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      let res;
+      if (data.type === "Repair") {
+        res = await fetch("/api/invoices/repair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+      } else {
+        res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+      }
 
       const json = await res.json();
 
-      if (res.ok) {
+      if (res.ok && json.success) {
         toast.success("Invoice created successfully & stock updated!");
         // Refresh invoices after creating
         await fetchInvoices(1, searchQuery);
-        return true;
+        return json.invoice;
       }
 
       toast.error(json.error || json.message || "Failed to create invoice");
-      return false;
+      return null;
     } catch (err: any) {
       toast.error("Network error creating invoice");
-      return false;
+      return null;
     }
   };
 

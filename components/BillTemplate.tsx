@@ -28,6 +28,7 @@ export interface BillData {
   shopName?: string;
   shopAddress?: string;
   shopPhone?: string;
+  type?: string;
 }
 
 const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
@@ -149,10 +150,30 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
           borderRadius: "12px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           overflow: "hidden",
+          position: "relative", // Needed for absolute positioning of watermark
         }}
       >
+        {/* Watermark Background */}
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%) rotate(-45deg)",
+            fontSize: "90px",
+            fontWeight: "900",
+            color: "rgba(0, 0, 0, 0.03)",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 0,
+          }}
+        >
+          {data.type === "Repair" ? "REPAIR" : "SELL"}
+        </div>
+
         {/* Inner Content */}
-        <div style={{ padding: "28px 32px" }}>
+        <div style={{ padding: "28px 32px", position: "relative", zIndex: 1 }}>
           {/* Header */}
           <div
             style={{
@@ -191,7 +212,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                 color: "#1f2937",
               }}
             >
-              SALES INVOICE
+              {data.type === "Repair" ? "REPAIR INVOICE" : "SALES INVOICE"}
             </div>
           </div>
 

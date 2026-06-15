@@ -227,35 +227,46 @@ const SellInner = () => {
         quantity: p.quantity,
         salePrice: p.salePrice,
         description: p.description,
-      }))
+      })),
+      type: "Sell",
     };
 
-    const ok = await createInvoice(payload);
+    const createdInvoice = await createInvoice(payload);
 
-    if (ok) {
-      // Prepare multi-product bill data
-      const invoiceNo = `INV-${Date.now().toString().slice(-8)}`;
-      const date = new Date().toLocaleString("en-PK", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+    if (createdInvoice) {
+      const date = createdInvoice.createdAt 
+        ? new Date(createdInvoice.createdAt).toLocaleString("en-PK", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : new Date().toLocaleString("en-PK", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+      const invoiceNo = createdInvoice.invoiceNo || `INV-${createdInvoice._id?.slice(-8) || "00000000"}`;
 
       setLastBillData({
         invoiceNo,
         date,
-        customerName: customerName.trim(),
-        products: appendedProducts.map(p => ({
-          productName: p.product.name,
+        customerName: createdInvoice.customerName || customerName.trim(),
+        products: createdInvoice.products.map((p: any) => ({
+          productName: p.product?.name || "Deleted Product",
           quantity: p.quantity,
           salePrice: p.salePrice,
           description: p.description,
-          productDescription: p.product.description || "",
-          productImage: p.product.images?.[0]?.url || "",
+          productDescription: p.product?.description || "",
+          productImage: p.product?.images?.[0]?.url || p.product?.images?.[0] || "",
         })),
-        totalAmount: appendedProducts.reduce((acc, p) => acc + p.salePrice, 0),
+        type: createdInvoice.type || "Sell",
+        totalAmount: createdInvoice.totalAmount,
+        sellerName: createdInvoice.soldBy?.name || "",
       });
 
       setShowBillModal(true);

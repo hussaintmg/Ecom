@@ -264,6 +264,7 @@ const InvoicesInner = () => {
                   <th className="px-5 py-3">Customer</th>
                   <th className="px-5 py-3">Product</th>
                   <th className="px-5 py-3">Category</th>
+                  <th className="px-5 py-3 text-center">Type</th>
                   <th className="px-5 py-3 bg-primary/5 text-center">Qty</th>
                   <th className="px-5 py-3 bg-primary/5">Total Price</th>
                   <th className="px-5 py-3">Description</th>
@@ -307,6 +308,16 @@ const InvoicesInner = () => {
                           tooltipLines={categoryNames}
                           maxChars={28}
                         />
+                      </td>
+
+                      <td className="px-5 py-4 text-center">
+                        <span className={`px-2 py-1 rounded text-xs font-bold whitespace-nowrap ${
+                          inv.type === "Repair"
+                            ? "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+                            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                        }`}>
+                          {inv.type || "Sell"}
+                        </span>
                       </td>
 
                       <td className="px-5 py-4 font-bold text-center bg-primary/5">
@@ -372,8 +383,15 @@ const InvoicesInner = () => {
                           maxChars={30}
                         />
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        Customer: <span className="font-semibold">{inv.customerName || "Walk-in Customer"}</span>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>Customer: <span className="font-semibold">{inv.customerName || "Walk-in Customer"}</span></span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          inv.type === "Repair"
+                            ? "bg-amber-500/10 text-amber-500"
+                            : "bg-emerald-500/10 text-emerald-500"
+                        }`}>
+                          {inv.type || "Sell"}
+                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         <TooltipCell
