@@ -24,7 +24,7 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
     const element = billRef.current;
     const opt = {
       margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
-      filename: `Invoice_${billData.invoiceNo}.pdf`,
+      filename: `${billData.type === "Credit" ? "Credit_Receipt" : "Invoice"}_${billData.invoiceNo}.pdf`,
       image: {
         type: "jpeg" as const,
         quality: 0.98,
@@ -120,7 +120,7 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-900 p-4 border-b dark:border-gray-700 rounded-t-2xl flex justify-between items-center z-10">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-            Invoice Preview
+            {billData.type === "Credit" ? "Credit Receipt Preview" : "Invoice Preview"}
           </h2>
           <button
             onClick={onClose}

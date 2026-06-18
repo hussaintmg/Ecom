@@ -134,6 +134,12 @@ export const downloadInvoicePDF = async (invoice: any) => {
       });
   const seller = esc(invoice.soldBy?.name || "M S ELECTRIC AND ELECTRONICS");
   const invoiceType = invoice.type || "Sell";
+  const isCredit = invoiceType === "Credit";
+  const documentTitle = isCredit
+    ? "CREDIT SALE RECEIPT"
+    : invoiceType === "Repair"
+      ? "REPAIR INVOICE"
+      : "SALES INVOICE";
 
   // 5. Clean, centered HTML with proper sizing
   const html = `
@@ -142,7 +148,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
 
         <!-- Watermark Background -->
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-45deg);font-size:90px;font-weight:900;color:rgba(0,0,0,0.03);white-space:nowrap;pointer-events:none;user-select:none;z-index:0;">
-          ${invoiceType === "Repair" ? "REPAIR" : "SELL"}
+          ${isCredit ? "CREDIT" : invoiceType === "Repair" ? "REPAIR" : "SELL"}
         </div>
 
         <!-- INNER CONTENT -->
@@ -154,13 +160,13 @@ export const downloadInvoicePDF = async (invoice: any) => {
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Shop C15/C17, Quality Godown, Shershah</div>
             <div style="font-size:12px;color:#6b7280;margin:4px 0;">Phone: Adnan +92 333 3424083</div>
             <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">
-              ${invoiceType === "Repair" ? "REPAIR INVOICE" : "SALES INVOICE"}
+              ${documentTitle}
             </div>
           </div>
 
           <!-- META INFO -->
           <div style="display:flex;justify-content:space-between;margin-bottom:24px;font-size:12px;background:#f9fafb;padding:12px 16px;border-radius:8px;border:1px solid #e5e7eb;">
-            <div><span style="font-weight:600;color:#4b5563;">Invoice No:</span> <span style="color:#111827;">${invoiceNo}</span></div>
+            <div><span style="font-weight:600;color:#4b5563;">${isCredit ? "Receipt No" : "Invoice No"}:</span> <span style="color:#111827;">${invoiceNo}</span></div>
             <div><span style="font-weight:600;color:#4b5563;">Date:</span> <span style="color:#111827;">${dateStr}</span></div>
           </div>
 
@@ -182,13 +188,13 @@ export const downloadInvoicePDF = async (invoice: any) => {
               Customer: <span style="font-weight:700;color:#111827;">${esc(invoice.customerName || "Walk-in Customer")}</span>
             </div>
             <div style="font-size:18px;font-weight:700;color:#111827;text-align:right;">
-              Total Payable: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
+              ${isCredit ? "Total Credit" : "Total Payable"}: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
             </div>
           </div>
 
           <!-- FOOTER -->
           <div style="text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px;">
-            <div style="margin-bottom:4px;">Thank you for your purchase!</div>
+            <div style="margin-bottom:4px;">${isCredit ? "This receipt records items provided on credit." : "Thank you for your purchase!"}</div>
             <div style="font-weight:500;color:#6b7280;">Seller: ${seller}</div>
           </div>
         </div>
@@ -231,7 +237,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
 
   const opts = {
     margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
-    filename: `Invoice_${invoiceNo}.pdf`,
+    filename: `${isCredit ? "Credit_Receipt" : "Invoice"}_${invoiceNo}.pdf`,
     image: { type: "jpeg" as const, quality: 0.98 },
     html2canvas: {
       scale: 2,

@@ -27,9 +27,13 @@ const InvoiceSchema = new Schema(
       default: "Sell",
     },
     totalAmount: { type: Number },
+    stockAlreadyDeducted: { type: Boolean, default: false },
+    sourceCreditSale: { type: Schema.Types.ObjectId, ref: "CreditSale" },
     soldBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }
 );
+
+delete mongoose.models.Invoice;
 
 export default mongoose.models.Invoice || mongoose.model("Invoice", InvoiceSchema);

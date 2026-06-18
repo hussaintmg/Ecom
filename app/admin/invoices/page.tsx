@@ -12,11 +12,12 @@ import {
   CalendarDays,
   Search,
   Download,
+  Trash2,
 } from "lucide-react";
 import { downloadInvoicePDF } from "@/utils/downloadInvoicePDF";
 
 const InvoicesInner = () => {
-  const { invoices, loading, fetchInvoices } = useInvoices();
+  const { invoices, loading, fetchInvoices, deleteInvoice } = useInvoices();
   const { products, fetchProducts } = useProducts();
   const { categories, fetchCategories } = useCategories();
 
@@ -32,6 +33,21 @@ const InvoicesInner = () => {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (inv: any) => {
+    const restoresStock = (inv.type || "Sell") === "Sell";
+    const ok = confirm(
+      restoresStock
+        ? "Delete this Sell invoice and restore product stock?"
+        : "Delete this Repair invoice? Stock will not be changed."
+    );
+    if (!ok) return;
+
+    setDeletingId(inv._id);
+    await deleteInvoice(inv._id);
+    setDeletingId(null);
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -343,18 +359,32 @@ const InvoicesInner = () => {
                         </div>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <button
-                          onClick={() => handleDownload(inv)}
-                          disabled={downloadingId === inv._id}
-                          className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
-                          title="Download Bill"
-                        >
-                          {downloadingId === inv._id ? (
-                            <RefreshCw size={14} className="animate-spin" />
-                          ) : (
-                            <Download size={14} />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleDownload(inv)}
+                            disabled={downloadingId === inv._id}
+                            className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
+                            title="Download Bill"
+                          >
+                            {downloadingId === inv._id ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Download size={14} />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(inv)}
+                            disabled={deletingId === inv._id}
+                            className="p-1.5 rounded-lg border hover:bg-red-500/10 transition-colors text-red-600 disabled:opacity-50"
+                            title="Delete Invoice"
+                          >
+                            {deletingId === inv._id ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -444,6 +474,18 @@ const InvoicesInner = () => {
                           <RefreshCw size={12} className="animate-spin" />
                         ) : (
                           <Download size={12} />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(inv)}
+                        disabled={deletingId === inv._id}
+                        className="p-1.5 rounded-lg border hover:bg-red-500/10 transition-colors text-red-600 disabled:opacity-50"
+                        title="Delete Invoice"
+                      >
+                        {deletingId === inv._id ? (
+                          <RefreshCw size={12} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={12} />
                         )}
                       </button>
                     </div>

@@ -63,6 +63,12 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
     data.totalAmount ||
     data.totalPrice ||
     items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+  const isCredit = data.type === "Credit";
+  const documentLabel = isCredit
+    ? "CREDIT SALE RECEIPT"
+    : data.type === "Repair"
+      ? "REPAIR INVOICE"
+      : "SALES INVOICE";
 
   // Convert image URLs to base64 via fetch to avoid CORS issues
   useEffect(() => {
@@ -169,7 +175,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             zIndex: 0,
           }}
         >
-          {data.type === "Repair" ? "REPAIR" : "SELL"}
+          {isCredit ? "CREDIT" : data.type === "Repair" ? "REPAIR" : "SELL"}
         </div>
 
         {/* Inner Content */}
@@ -212,7 +218,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                 color: "#1f2937",
               }}
             >
-              {data.type === "Repair" ? "REPAIR INVOICE" : "SALES INVOICE"}
+              {documentLabel}
             </div>
           </div>
 
@@ -231,7 +237,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
           >
             <div>
               <span style={{ fontWeight: "600", color: "#4b5563" }}>
-                Invoice No:
+                {isCredit ? "Receipt No:" : "Invoice No:"}
               </span>{" "}
               <span style={{ color: "#111827" }}>{invoiceNo}</span>
             </div>
@@ -439,7 +445,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             <div
               style={{ fontSize: "18px", fontWeight: "700", color: "#111827", textAlign: "right" }}
             >
-              Total Payable:{" "}
+              {isCredit ? "Total Credit:" : "Total Payable:"}{" "}
               <span style={{ color: "#059669" }}>
                 PKR {grandTotal.toLocaleString()}
               </span>
@@ -457,7 +463,9 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             }}
           >
             <div style={{ marginBottom: "4px" }}>
-              Thank you for your purchase!
+              {isCredit
+                ? "This receipt records items provided on credit."
+                : "Thank you for your purchase!"}
             </div>
             <div style={{ fontWeight: "500", color: "#6b7280" }}>
               Seller: {esc(sellerName)}

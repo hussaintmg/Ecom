@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/utils/db";
 import Invoice from "@/models/Invoice";
+import Product from "@/models/Product";
+import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
 
 export async function GET(
@@ -70,7 +72,7 @@ export async function DELETE(
       );
     }
     
-    const invoice = await Invoice.findByIdAndDelete(id);
+    const invoice = await Invoice.findById(id);
     
     if (!invoice) {
       return NextResponse.json(
@@ -78,6 +80,41 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    if ((invoice.type || "Sell") === "Sell" && !invoice.stockAlreadyDeducted) {
+      const invoiceItems =
+        invoice.products && invoice.products.length > 0
+          ? invoice.products
+          : [
+              {
+                product: invoice.product,
+                quantity: invoice.quantity,
+                description: invoice.description,
+              },
+            ];
+
+      for (const item of invoiceItems) {
+        const productId = item.product?._id || item.product;
+        const qty = Number(item.quantity || 0);
+        if (!productId || qty <= 0) continue;
+
+        const product = await Product.findById(productId);
+        if (!product) continue;
+
+        product.stock = product.stock + qty;
+        await product.save();
+
+        await StockLog.create({
+          product: product._id,
+          change: qty,
+          description: `Sell invoice deleted. Stock restored for ${invoice.customerName || "customer"}.`,
+          resultingStock: product.stock,
+          performedBy: user.id,
+        });
+      }
+    }
+
+    await Invoice.findByIdAndDelete(id);
     
     return NextResponse.json({
       success: true,
