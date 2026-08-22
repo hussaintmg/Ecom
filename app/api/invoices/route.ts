@@ -6,6 +6,7 @@ import Invoice from "@/models/Invoice";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import { normalizeCustomerDetails } from "@/utils/customerDetails";
 import User from "@/models/User";
 import "@/models/User";
 import "@/models/Category";
@@ -27,16 +28,21 @@ export async function GET(req: NextRequest) {
 
     let query: any = {};
     
-    // Search by product name (legacy and nested list)
+    // Search by product name (legacy and nested list) or by customer details
     if (search) {
       const products = await Product.find({ 
         name: { $regex: search, $options: "i" } 
       }).select("_id");
       
       const productIds = products.map(p => p._id);
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       query.$or = [
         { product: { $in: productIds } },
-        { "products.product": { $in: productIds } }
+        { "products.product": { $in: productIds } },
+        { customerName: { $regex: escaped, $options: "i" } },
+        { customerPhone: { $regex: escaped, $options: "i" } },
+        { customerEmail: { $regex: escaped, $options: "i" } },
+        { customerCity: { $regex: escaped, $options: "i" } },
       ];
     }
     
@@ -105,6 +111,11 @@ export async function GET(req: NextRequest) {
         obj.totalAmount = obj.salePrice;
       }
       obj.customerName = obj.customerName || "Walk-in Customer";
+      obj.customerPhone = obj.customerPhone || "";
+      obj.customerEmail = obj.customerEmail || "";
+      obj.customerAddress = obj.customerAddress || "";
+      obj.customerCity = obj.customerCity || "";
+      obj.customerNote = obj.customerNote || "";
       return obj;
     });
 
@@ -140,9 +151,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { productId, quantity, salePrice, description, products, customerName ,type} = body;
+    const { productId, quantity, salePrice, description, products, type } = body;
+    const customer = normalizeCustomerDetails(body);
 
-    if (!customerName || !customerName.trim()) {
+    if (!customer.customerName) {
       return NextResponse.json(
         { success: false, error: "Customer name is required" },
         { status: 400 }
@@ -224,7 +236,8 @@ export async function POST(req: NextRequest) {
       const { productObj, qty, price, description: itemDesc } = validated;
 
       // Deduct stock
-      const newStock = productObj.stock - qty;
+      const previousStock = productObj.stock;
+      const newStock = previousStock - qty;
       productObj.stock = newStock;
       await productObj.save();
 
@@ -233,6 +246,7 @@ export async function POST(req: NextRequest) {
         product: productObj._id,
         change: -qty,
         description: `Manual Sell${itemDesc ? `: ${itemDesc}` : ""}`,
+        previousStock,
         resultingStock: newStock,
         performedBy: user.id,
       });
@@ -249,7 +263,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Create Multi-Product Invoice
     const invoice = await Invoice.create({
-      customerName: customerName.trim(),
+      ...customer,
       products: invoiceItems,
       totalAmount: calculatedTotalAmount,
       soldBy: user.id,

@@ -6,6 +6,7 @@ import { ProductProvider, useProducts } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
+import { CustomerCell, CustomerDetailsModal } from "@/components/dashboard/InvoiceCustomer";
 import {
   CalendarDays,
   ChevronLeft,
@@ -48,6 +49,8 @@ const CreditSalesInner = () => {
   const { categories, fetchCategories } = useCategories();
 
   const [filterProduct, setFilterProduct] = useState("");
+  // Credit sale whose full customer record is open in the details sheet
+  const [detailCredit, setDetailCredit] = useState<any>(null);
   const [filterCategory, setFilterCategory] = useState("");
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
@@ -446,8 +449,17 @@ const CreditSalesInner = () => {
                           year: "numeric",
                         })}
                       </td>
-                      <td className={`px-4 py-4 font-semibold text-foreground ${isCancelledOrPaid ? "line-through opacity-60" : ""}`}>
-                        {credit.customerName}
+                      <td className={`px-4 py-4 ${isCancelledOrPaid ? "opacity-60" : ""}`}>
+                        <CustomerCell
+                          invoice={credit}
+                          onOpen={() =>
+                            setDetailCredit({
+                              ...credit,
+                              type: "Credit",
+                              soldBy: credit.createdBy,
+                            })
+                          }
+                        />
                       </td>
                       <td className={`px-4 py-4 font-semibold text-foreground ${isCancelledOrPaid ? "line-through opacity-60" : ""}`}>
                         <TooltipCell
@@ -585,11 +597,18 @@ const CreditSalesInner = () => {
                           maxChars={30}
                         />
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span>
-                          Customer: <span className={`font-semibold ${isCancelledOrPaid ? "line-through opacity-60" : ""}`}>{credit.customerName}</span>
-                        </span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      <div className="text-xs text-muted-foreground mt-1 flex items-start justify-between gap-2">
+                        <CustomerCell
+                          invoice={credit}
+                          onOpen={() =>
+                            setDetailCredit({
+                              ...credit,
+                              type: "Credit",
+                              soldBy: credit.createdBy,
+                            })
+                          }
+                        />
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           credit.status === "Paid"
                             ? "bg-emerald-500/10 text-emerald-600"
                             : credit.status === "Reverted"
@@ -750,6 +769,14 @@ const CreditSalesInner = () => {
           )}
         </>
       )}
+
+      {/* ── Customer details sheet ── */}
+      <CustomerDetailsModal
+        open={!!detailCredit}
+        onClose={() => setDetailCredit(null)}
+        invoice={detailCredit}
+        currency="PKR"
+      />
     </div>
   );
 };

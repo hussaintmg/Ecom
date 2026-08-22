@@ -4,6 +4,7 @@ import Invoice from "@/models/Invoice";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import { normalizeCustomerDetails } from "@/utils/customerDetails";
 import User from "@/models/User";
 import "@/models/User";
 import "@/models/Category";
@@ -22,9 +23,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { productId, quantity, salePrice, description, products, customerName ,type} = body;
+    const { productId, quantity, salePrice, description, products, type } = body;
+    const customer = normalizeCustomerDetails(body);
 
-    if (!customerName || !customerName.trim()) {
+    if (!customer.customerName) {
       return NextResponse.json(
         { success: false, error: "Customer name is required" },
         { status: 400 }
@@ -110,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Create Multi-Product Invoice
     const invoice = await Invoice.create({
-      customerName: customerName.trim(),
+      ...customer,
       products: invoiceItems,
       totalAmount: calculatedTotalAmount,
       soldBy: user.id,

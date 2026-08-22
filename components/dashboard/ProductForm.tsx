@@ -3,7 +3,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { useProducts, MediaItem } from "@/context/ProductContext";
 import { useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
-import { RefreshCw, Upload, ImagePlus, X } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import {
+  MAX_STOCK_CHANGE,
+  isSuspiciousStockChange,
+} from "@/constants/stock";
+import { RefreshCw, Upload, ImagePlus, X, ArrowRight } from "lucide-react";
 
 interface ProductFormProps {
   initialData?: any;
@@ -27,6 +32,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
   const [pendingImages, setPendingImages] = useState<MediaItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmStockOpen, setConfirmStockOpen] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -78,14 +84,24 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
     setPendingImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Stock the product holds right now (0 for a product being created).
+  const currentStock = Number(initialData?.stock ?? 0);
+  const enteredStock = formData.stock.trim() === "" ? NaN : Number(formData.stock);
+  const stockDelta = Number.isFinite(enteredStock) ? enteredStock - currentStock : 0;
 
-    if (Number(formData.stock) < 0) {
-      alert("Stock must be 0 or greater");
-      return;
-    }
+  /** Blocks the save and explains what is wrong, or null when the value is fine. */
+  const stockError = (() => {
+    if (formData.stock.trim() === "") return null;
+    if (!Number.isFinite(enteredStock) || !Number.isInteger(enteredStock))
+      return "Stock must be a whole number — no decimals.";
+    if (enteredStock < 0) return "Stock must be 0 or greater.";
+    if (enteredStock > MAX_STOCK_CHANGE)
+      return `Stock cannot be above ${MAX_STOCK_CHANGE.toLocaleString()} — please check the amount.`;
+    return null;
+  })();
 
+  const submitForm = async () => {
+    setConfirmStockOpen(false);
     setSubmitting(true);
 
     // Upload pending images to Cloudinary first
@@ -117,6 +133,24 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
       onComplete();
     }
     setSubmitting(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (stockError) {
+      alert(stockError);
+      return;
+    }
+
+    // A quantity that looks like a slip of the finger gets a second look
+    // before it reaches the database.
+    if (stockDelta !== 0 && isSuspiciousStockChange(stockDelta, currentStock)) {
+      setConfirmStockOpen(true);
+      return;
+    }
+
+    await submitForm();
   };
 
   const inputClass =
@@ -179,19 +213,29 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Initial Stock *
+            {initialData?._id ? "Stock" : "Initial Stock *"}
           </span>
           <input
             type="number"
-            className={inputClass}
+            className={`${inputClass} ${stockError ? "border-red-500 focus:ring-red-500/30" : ""}`}
             value={formData.stock}
             onChange={(e) =>
               setFormData({ ...formData, stock: e.target.value })
             }
             required
             min={0}
+            step={1}
+            max={MAX_STOCK_CHANGE}
             placeholder="e.g. 50"
           />
+          {stockError ? (
+            <span className="text-[11px] font-semibold text-red-600">{stockError}</span>
+          ) : initialData?._id && stockDelta !== 0 ? (
+            <span className="text-[11px] text-muted-foreground">
+              Stock will change {currentStock} → {enteredStock} ({stockDelta > 0 ? "+" : ""}
+              {stockDelta}) and be recorded in the stock history.
+            </span>
+          ) : null}
         </label>
       </div>
 
@@ -314,6 +358,37 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
         )}
         {initialData?._id ? "Update Product" : "Create Product"}
       </Button>
+
+      <ConfirmDialog
+        open={confirmStockOpen}
+        tone="warning"
+        title="That is an unusually large stock amount"
+        message={
+          <>
+            Please double-check the quantity before saving — an extra digit is the most
+            common stock mistake.
+            {initialData?._id ? " This product currently holds " : " You are starting this product at "}
+            <strong className="text-foreground">
+              {initialData?._id ? `${currentStock} units.` : `${enteredStock} units.`}
+            </strong>
+          </>
+        }
+        highlight={
+          <span className="inline-flex items-center gap-2">
+            {currentStock}
+            <ArrowRight size={16} className="opacity-60" />
+            <span className={stockDelta > 0 ? "text-emerald-600" : "text-red-600"}>
+              {enteredStock}
+            </span>
+            <span className="text-xs font-semibold text-muted-foreground">units</span>
+          </span>
+        }
+        confirmLabel="Yes, save it"
+        cancelLabel="Let me check"
+        loading={submitting}
+        onConfirm={submitForm}
+        onCancel={() => setConfirmStockOpen(false)}
+      />
     </form>
   );
 };

@@ -5,6 +5,10 @@ import { useProducts } from "@/context/ProductContext";
 import { CreditSaleProvider, useCreditSales } from "@/context/CreditSaleContext";
 import Button from "@/components/ui/Button";
 import BillModal from "@/components/BillModal";
+import CustomerDetailsForm, {
+  CustomerFormValue,
+  emptyCustomer,
+} from "@/components/dashboard/CustomerDetailsForm";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -44,7 +48,7 @@ const CreditSaleInner = () => {
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
   const [description, setDescription] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [saving, setSaving] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
@@ -165,14 +169,15 @@ const CreditSaleInner = () => {
 
   const handleSaveCreditSale = async () => {
     if (appendedProducts.length === 0) return;
-    if (!customerName.trim()) {
+    if (!customer.customerName.trim()) {
       alert("Customer name is required");
       return;
     }
 
     setSaving(true);
     const createdCreditSale = await createCreditSale({
-      customerName: customerName.trim(),
+      ...customer,
+      customerName: customer.customerName.trim(),
       products: appendedProducts.map((p) => ({
         productId: p.productId,
         quantity: p.quantity,
@@ -202,6 +207,10 @@ const CreditSaleInner = () => {
         invoiceNo: `CR-${createdCreditSale._id?.slice(-8) || "00000000"}`,
         date,
         customerName: createdCreditSale.customerName,
+        customerPhone: createdCreditSale.customerPhone || "",
+        customerAddress: createdCreditSale.customerAddress || "",
+        customerCity: createdCreditSale.customerCity || "",
+        customerEmail: createdCreditSale.customerEmail || "",
         products: createdCreditSale.products.map((p: any) => ({
           productName: p.product?.name || "Deleted Product",
           quantity: p.quantity,
@@ -216,7 +225,7 @@ const CreditSaleInner = () => {
       });
       setShowBillModal(true);
       setAppendedProducts([]);
-      setCustomerName("");
+      setCustomer(emptyCustomer);
       resetItemForm();
     }
 
@@ -577,19 +586,13 @@ const CreditSaleInner = () => {
                   </table>
                 </div>
 
-                <label className="flex flex-col gap-1.5 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Customer Name *
-                  </span>
-                  <input
-                    type="text"
-                    className={inputClass}
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    required
-                    placeholder="e.g. Customer / Client Name"
+                <div className="mb-3">
+                  <CustomerDetailsForm
+                    value={customer}
+                    onChange={setCustomer}
+                    disabled={saving}
                   />
-                </label>
+                </div>
 
                 <Button
                   onClick={handleSaveCreditSale}

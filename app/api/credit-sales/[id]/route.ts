@@ -51,6 +51,11 @@ const createPaidInvoice = async (creditSale: any, userId: string) => {
 
   const invoice = await Invoice.create({
     customerName: creditSale.customerName,
+    customerPhone: creditSale.customerPhone || "",
+    customerEmail: creditSale.customerEmail || "",
+    customerAddress: creditSale.customerAddress || "",
+    customerCity: creditSale.customerCity || "",
+    customerNote: creditSale.customerNote || "",
     products: (creditSale.products || []).map((item: any) => ({
       product: item.product?._id || item.product,
       category: item.category?._id || item.category,

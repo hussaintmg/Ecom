@@ -3,117 +3,19 @@ import React, { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ProductProvider, useProducts, MediaItem } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
-import { StockProvider, useStock } from "@/context/StockContext";
+import { StockProvider } from "@/context/StockContext";
 import Button from "@/components/ui/Button";
-import { ArrowLeft, RefreshCw, Plus, Save, Package, TrendingUp, Clock, ImagePlus, X } from "lucide-react";
-
-/* ─── Stock History (unchanged) ─── */
-const StockHistory = ({ productId }: { productId: string }) => {
-  const { logs, loading, fetchLogs } = useStock();
-
-  useEffect(() => {
-    fetchLogs(productId);
-  }, [productId]);
-
-  if (loading) {
-    return (
-      <div className="animate-pulse flex flex-col gap-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-muted/60" />
-        ))}
-      </div>
-    );
-  }
-
-  if (logs.length === 0) {
-    return (
-      <div className="flex flex-col items-center py-10 text-muted-foreground gap-2">
-        <Clock size={28} className="opacity-30" />
-        <p className="text-sm">No stock history yet.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4 mt-2">
-      {/* Desktop Table */}
-      <div className="hidden md:block overflow-hidden rounded-xl border bg-card shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b bg-muted/40 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3">Change</th>
-              <th className="px-4 py-3">Resulting Stock</th>
-              <th className="px-4 py-3">Description</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">By</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {logs.map((log) => (
-              <tr key={log._id} className="hover:bg-muted/20 transition-colors">
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1 font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {log.change > 0 && "+"}{log.change}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-semibold text-muted-foreground">{log.resultingStock}</td>
-                <td className="px-4 py-3 line-clamp-2 max-w-[200px]">{log.description}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                  {new Date(log.createdAt).toLocaleDateString("en-PK", {
-                    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-                  })}
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{log.performedBy?.name || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile Cards */}
-      <div className="flex flex-col gap-3 md:hidden">
-        {logs.map((log) => (
-          <div key={log._id} className="flex items-start gap-3 p-3 rounded-xl border bg-card hover:bg-muted/20 transition-colors shadow-sm">
-            <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
-              log.change > 0 ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400" : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-            }`}>
-              <TrendingUp size={14} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-sm font-bold ${log.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {log.change > 0 ? "+" : ""}{log.change}
-                </span>
-                <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md">→ {log.resultingStock} units</span>
-              </div>
-              <p className="text-sm text-foreground mt-0.5 break-words">{log.description}</p>
-              <div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground border-t pt-2">
-                <span>{new Date(log.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                {log.performedBy && <span>• by {log.performedBy.name}</span>}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+import StockManager from "@/components/dashboard/StockManager";
+import { ArrowLeft, RefreshCw, Save, Package, ImagePlus, X } from "lucide-react";
 
 /* ─── Main Inner with Image Management ─── */
 const ManageProductInner = ({ productId }: { productId: string }) => {
   const router = useRouter();
   const { fetchProductById, editProduct, uploadMedia, deleteMedia } = useProducts();
   const { categories, fetchCategories } = useCategories();
-  const { addStockChange, fetchLogs } = useStock();
-
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  // Stock form
-  const [stockChange, setStockChange] = useState("");
-  const [stockDesc, setStockDesc] = useState("");
-  const [stockLoading, setStockLoading] = useState(false);
 
   // Edit form
   const [form, setForm] = useState({
@@ -208,20 +110,6 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
       setPendingImages([]); // clear pending queue
     }
     setSaving(false);
-  };
-
-  const handleStockUpdate = async () => {
-    const amount = Number(stockChange);
-    if (!amount || amount <= 0 || !stockDesc.trim()) return;
-    setStockLoading(true);
-    const ok = await addStockChange(productId, amount, stockDesc);
-    if (ok) {
-      setStockChange("");
-      setStockDesc("");
-      await loadProduct();
-      await fetchLogs(productId);
-    }
-    setStockLoading(false);
   };
 
   if (loading) {
@@ -354,31 +242,11 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
         </div>
 
         {/* Right: Stock Management */}
-        <div className="flex flex-col gap-6">
-          <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base">Add Stock</h2>
-              <span className={`text-2xl font-black ${product.stock > 0 ? "text-emerald-600" : "text-red-600"}`}>{product.stock}</span>
-            </div>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quantity to Add *</span>
-              <input type="number" className={inputClass} value={stockChange} onChange={(e) => setStockChange(e.target.value)} min={1} placeholder="e.g. 50" />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description *</span>
-              <textarea className={`${inputClass} min-h-17.5 resize-y`} value={stockDesc} onChange={(e) => setStockDesc(e.target.value)} placeholder="e.g. New shipment from wholesale..." />
-            </label>
-            <Button onClick={handleStockUpdate} disabled={stockLoading || !stockChange || Number(stockChange) <= 0 || !stockDesc.trim()} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white w-full">
-              {stockLoading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-              Confirm Addition
-            </Button>
-          </div>
-
-          <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm">
-            <h2 className="font-bold text-base">Stock Updates History</h2>
-            <StockHistory productId={productId} />
-          </div>
-        </div>
+        <StockManager
+          productId={productId}
+          currentStock={product.stock}
+          onChanged={loadProduct}
+        />
       </div>
 
       {/* Reviews Management */}

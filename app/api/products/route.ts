@@ -3,6 +3,8 @@ import connectDB from "@/utils/db";
 import Product from "@/models/Product";
 import Category from "@/models/Category";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import StockLog from "@/models/StockLog";
+import { MAX_STOCK_CHANGE } from "@/constants/stock";
 import mongoose from "mongoose";
 
 export async function GET(req: NextRequest) {
@@ -142,7 +144,27 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
+/**
+ * Record the opening stock of freshly created products so the very first
+ * quantity also shows up in the stock history — and can be corrected or
+ * undone from there if it was typed wrong.
+ */
+const logOpeningStock = async (products: any[], userId?: string) => {
+  const entries = products
+    .filter((p) => p && Number(p.stock) > 0)
+    .map((p) => ({
+      product: p._id,
+      change: Number(p.stock),
+      description: "Opening stock set when the product was created",
+      previousStock: 0,
+      resultingStock: Number(p.stock),
+      performedBy: userId,
+    }));
+
+  if (entries.length > 0) await StockLog.insertMany(entries);
+};
+
+export async function POST(request: NextRequest) {
   const products = [
     {
       name: "0.1KW / 100W",
@@ -232,7 +254,36 @@ export async function POST(request: Request) {
 
   try {
     await connectDB();
+    const user = getUserFromRequest(request);
     const body = await request.json();
+
+    // Guard the opening stock the same way manual adjustments are guarded —
+    // a mistyped opening quantity is just as costly as a mistyped top-up.
+    if (body.stock !== undefined && body.stock !== null && body.stock !== "") {
+      const openingStock = Number(body.stock);
+      if (!Number.isFinite(openingStock) || !Number.isInteger(openingStock)) {
+        return NextResponse.json(
+          { error: "Stock must be a whole number" },
+          { status: 400 },
+        );
+      }
+      if (openingStock < 0) {
+        return NextResponse.json(
+          { error: "Stock cannot be negative" },
+          { status: 400 },
+        );
+      }
+      if (openingStock > MAX_STOCK_CHANGE) {
+        return NextResponse.json(
+          {
+            error: `Stock cannot be above ${MAX_STOCK_CHANGE.toLocaleString()}. Please check the amount.`,
+          },
+          { status: 400 },
+        );
+      }
+      body.stock = openingStock;
+    }
+
     console.log("body", body);
     console.log("Received invoice data:", body.generateAllCategories);
     console.log("Received invoice data:", body.generateAllCategories === true);
@@ -258,6 +309,7 @@ export async function POST(request: Request) {
 
       // Save all generated products
       const savedProducts = await Product.insertMany(finalProducts);
+      await logOpeningStock(savedProducts, user?.id);
       return NextResponse.json(
         {
           success: true,
@@ -269,6 +321,7 @@ export async function POST(request: Request) {
     } else {
       // Simple: Save single product as is
       const product = await Product.create(body);
+      await logOpeningStock([product], user?.id);
       return NextResponse.json(product, { status: 201 });
     }
   } catch (error) {

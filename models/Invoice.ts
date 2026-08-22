@@ -9,7 +9,13 @@ const InvoiceSchema = new Schema(
     salePrice: { type: Number },
     description: { type: String },
 
+    // ── Customer details ──
     customerName: { type: String, required: true },
+    customerPhone: { type: String, trim: true, default: "" },
+    customerEmail: { type: String, trim: true, default: "" },
+    customerAddress: { type: String, trim: true, default: "" },
+    customerCity: { type: String, trim: true, default: "" },
+    customerNote: { type: String, trim: true, default: "" },
 
     // Multi-product fields
     products: [

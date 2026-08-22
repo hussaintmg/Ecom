@@ -6,6 +6,7 @@ import { ProductProvider, useProducts } from "@/context/ProductContext";
 import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
+import { CustomerCell, CustomerDetailsModal } from "@/components/dashboard/InvoiceCustomer";
 import {
   RefreshCw,
   ReceiptText,
@@ -16,6 +17,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
+  Phone,
+  Mail,
+  MapPin,
+  Building2,
+  StickyNote,
 } from "lucide-react";
 import { downloadInvoicePDF } from "@/utils/downloadInvoicePDF";
 
@@ -51,6 +57,8 @@ const InvoicesInner = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState("");
+  // Invoice whose full customer record is open in the details sheet
+  const [detailInvoice, setDetailInvoice] = useState<any>(null);
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
   const [prevSearch, setPrevSearch] = useState(searchQuery || "");
   const [prevFilters, setPrevFilters] = useState({
@@ -84,7 +92,7 @@ const InvoicesInner = () => {
           endDate: filterEnd,
         });
       }
-    }, 1000);
+    }, 600);
     return () => clearTimeout(timer);
   }, [localSearch, filterProduct, filterCategory, filterStart, filterEnd, fetchInvoices]);
 
@@ -236,7 +244,7 @@ const InvoicesInner = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <label className="flex flex-col gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Search Product
+              Search Customer / Product
             </span>
             <div className="relative">
               <Search
@@ -245,7 +253,7 @@ const InvoicesInner = () => {
               />
               <input
                 type="text"
-                placeholder="Product name..."
+                placeholder="Name, phone, city or product..."
                 className={`${inputClass} pl-8`}
                 value={localSearch}
                 onChange={(e) => {
@@ -352,7 +360,8 @@ const InvoicesInner = () => {
                 <tr>
                   <th className="px-4 py-3">#</th>
                   <th className="px-4 py-3 whitespace-nowrap">Date</th>
-                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3 min-w-[210px]">Customer</th>
+                  <th className="px-4 py-3">Contact</th>
                   <th className="px-4 py-3">Product</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3 text-center">Type</th>
@@ -373,8 +382,11 @@ const InvoicesInner = () => {
                     totalPrice,
                   } = getInvData(inv);
                   return (
-                    <tr key={inv._id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-4 text-xs text-muted-foreground">
+                    <tr
+                      key={inv._id}
+                      className="group hover:bg-primary/[0.04] hover:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)] transition-colors"
+                    >
+                      <td className="px-4 py-4 text-xs text-muted-foreground border-l-2 border-transparent group-hover:border-primary transition-colors">
                         {(currentPage - 1) * 10 + idx + 1}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-xs text-muted-foreground">
@@ -385,8 +397,68 @@ const InvoicesInner = () => {
                         })}
                       </td>
 
-                      <td className="px-4 py-4 font-semibold text-foreground">
-                        {inv.customerName || "Walk-in Customer"}
+                      <td className="px-4 py-4">
+                        <CustomerCell
+                          invoice={inv}
+                          onOpen={() => setDetailInvoice(inv)}
+                          secondary="hint"
+                        />
+                      </td>
+
+                      {/* Contact — phone / city / address at a glance */}
+                      <td className="px-4 py-4 text-xs text-muted-foreground">
+                        <div className="flex flex-col gap-1 max-w-[190px]">
+                          {inv.customerPhone ? (
+                            <a
+                              href={`tel:${inv.customerPhone.replace(/[^\d+]/g, "")}`}
+                              className="flex items-center gap-1.5 font-semibold text-foreground hover:text-primary transition-colors w-fit"
+                            >
+                              <Phone size={11} className="shrink-0" />
+                              {inv.customerPhone}
+                            </a>
+                          ) : (
+                            <span className="italic opacity-60">No phone</span>
+                          )}
+                          {inv.customerCity && (
+                            <span className="flex items-center gap-1.5">
+                              <Building2 size={11} className="shrink-0" />
+                              {inv.customerCity}
+                            </span>
+                          )}
+                          {inv.customerAddress && (
+                            <span className="flex items-start gap-1.5">
+                              <MapPin size={11} className="shrink-0 mt-0.5" />
+                              <TooltipCell
+                                display={inv.customerAddress}
+                                tooltipLines={[inv.customerAddress]}
+                                maxChars={22}
+                              />
+                            </span>
+                          )}
+                          {inv.customerEmail && (
+                            <a
+                              href={`mailto:${inv.customerEmail}`}
+                              className="flex items-center gap-1.5 hover:text-primary transition-colors w-fit"
+                            >
+                              <Mail size={11} className="shrink-0" />
+                              <TooltipCell
+                                display={inv.customerEmail}
+                                tooltipLines={[inv.customerEmail]}
+                                maxChars={22}
+                              />
+                            </a>
+                          )}
+                          {inv.customerNote && (
+                            <span className="flex items-start gap-1.5">
+                              <StickyNote size={11} className="shrink-0 mt-0.5" />
+                              <TooltipCell
+                                display={inv.customerNote}
+                                tooltipLines={[inv.customerNote]}
+                                maxChars={22}
+                              />
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Product — portal tooltip */}
@@ -482,9 +554,62 @@ const InvoicesInner = () => {
               return (
                 <div
                   key={inv._id}
-                  className="rounded-2xl border bg-card p-4 shadow-sm flex flex-col gap-3"
+                  className="rounded-2xl border bg-card p-4 shadow-sm flex flex-col gap-3 transition-colors hover:border-primary/30"
                 >
-                  {/* Top */}
+                  {/* Customer — tap for the full record */}
+                  <div className="flex items-start justify-between gap-3 pb-3 border-b">
+                    <CustomerCell invoice={inv} onOpen={() => setDetailInvoice(inv)} />
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      inv.type === "Repair"
+                        ? "bg-amber-500/10 text-amber-500"
+                        : "bg-emerald-500/10 text-emerald-500"
+                    }`}>
+                      {inv.type || "Sell"}
+                    </span>
+                  </div>
+
+                  {/* Contact chips */}
+                  {(inv.customerPhone ||
+                    inv.customerCity ||
+                    inv.customerAddress ||
+                    inv.customerEmail ||
+                    inv.customerNote) && (
+                    <div className="flex flex-wrap gap-1.5 -mt-0.5">
+                      {inv.customerPhone && (
+                        <a
+                          href={`tel:${inv.customerPhone.replace(/[^\d+]/g, "")}`}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold bg-primary/10 text-primary px-2 py-1 rounded-full active:scale-95 transition-transform"
+                        >
+                          <Phone size={10} /> {inv.customerPhone}
+                        </a>
+                      )}
+                      {inv.customerCity && (
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground">
+                          <Building2 size={10} /> {inv.customerCity}
+                        </span>
+                      )}
+                      {inv.customerEmail && (
+                        <a
+                          href={`mailto:${inv.customerEmail}`}
+                          className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate"
+                        >
+                          <Mail size={10} /> {inv.customerEmail}
+                        </a>
+                      )}
+                      {inv.customerAddress && (
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate">
+                          <MapPin size={10} /> {inv.customerAddress}
+                        </span>
+                      )}
+                      {inv.customerNote && (
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate">
+                          <StickyNote size={10} /> {inv.customerNote}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Products */}
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-foreground">
@@ -493,16 +618,6 @@ const InvoicesInner = () => {
                           tooltipLines={productNames}
                           maxChars={30}
                         />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span>Customer: <span className="font-semibold">{inv.customerName || "Walk-in Customer"}</span></span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          inv.type === "Repair"
-                            ? "bg-amber-500/10 text-amber-500"
-                            : "bg-emerald-500/10 text-emerald-500"
-                        }`}>
-                          {inv.type || "Sell"}
-                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         <TooltipCell
@@ -627,6 +742,14 @@ const InvoicesInner = () => {
           )}
         </>
       )}
+
+      {/* ── Customer details sheet ── */}
+      <CustomerDetailsModal
+        open={!!detailInvoice}
+        onClose={() => setDetailInvoice(null)}
+        invoice={detailInvoice}
+        currency="PKR"
+      />
     </div>
   );
 };

@@ -4,6 +4,7 @@ import CreditSale from "@/models/CreditSale";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import { normalizeCustomerDetails } from "@/utils/customerDetails";
 import "@/models/User";
 import "@/models/Category";
 
@@ -89,9 +90,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { customerName, products } = await req.json();
+    const body = await req.json();
+    const { products } = body;
+    const customer = normalizeCustomerDetails(body);
+    const customerName = customer.customerName;
 
-    if (!customerName || !customerName.trim()) {
+    if (!customerName) {
       return NextResponse.json(
         { success: false, error: "Customer name is required" },
         { status: 400 }
@@ -146,7 +150,7 @@ export async function POST(req: NextRequest) {
       await StockLog.create({
         product: product._id,
         change: -qty,
-        description: `Credit sale created for ${customerName.trim()}${item.description ? `: ${item.description}` : ""}`,
+        description: `Credit sale created for ${customerName}${item.description ? `: ${item.description}` : ""}`,
         resultingStock: product.stock,
         performedBy: user.id,
       });
@@ -162,7 +166,7 @@ export async function POST(req: NextRequest) {
     }
 
     const creditSale = await CreditSale.create({
-      customerName: customerName.trim(),
+      ...customer,
       products: creditItems,
       totalAmount,
       remainingAmount: totalAmount,

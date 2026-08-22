@@ -4,6 +4,10 @@ import { useProducts } from "@/context/ProductContext";
 import { useInvoices } from "@/context/InvoiceContext";
 import Button from "@/components/ui/Button";
 import BillModal from "@/components/BillModal";
+import CustomerDetailsForm, {
+  CustomerFormValue,
+  emptyCustomer,
+} from "@/components/dashboard/CustomerDetailsForm";
 import { RefreshCw, ShoppingCart, Search, Package, ChevronLeft, ChevronRight, Plus, Trash2, Edit2, CheckCircle2, X } from "lucide-react";
 
 const STOCK_FILTERS = [
@@ -32,7 +36,7 @@ const SellInner = () => {
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
   const [description, setDescription] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [selling, setSelling] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery || "");
@@ -190,7 +194,7 @@ const SellInner = () => {
 
   const handleCheckout = async () => {
     if (appendedProducts.length === 0) return;
-    if (!customerName.trim()) {
+    if (!customer.customerName.trim()) {
       alert("Customer Name is required");
       return;
     }
@@ -198,7 +202,8 @@ const SellInner = () => {
     setSelling(true);
 
     const payload = {
-      customerName: customerName.trim(),
+      ...customer,
+      customerName: customer.customerName.trim(),
       products: appendedProducts.map(p => ({
         productId: p.productId,
         quantity: p.quantity,
@@ -232,7 +237,11 @@ const SellInner = () => {
       setLastBillData({
         invoiceNo,
         date,
-        customerName: createdInvoice.customerName || customerName.trim(),
+        customerName: createdInvoice.customerName || customer.customerName.trim(),
+        customerPhone: createdInvoice.customerPhone || customer.customerPhone.trim(),
+        customerAddress: createdInvoice.customerAddress || customer.customerAddress.trim(),
+        customerCity: createdInvoice.customerCity || customer.customerCity.trim(),
+        customerEmail: createdInvoice.customerEmail || customer.customerEmail.trim(),
         products: createdInvoice.products.map((p: any) => ({
           productName: p.product?.name || "Deleted Product",
           quantity: p.quantity,
@@ -255,7 +264,7 @@ const SellInner = () => {
       setSalePrice("");
       setDescription("");
       setSelectedProductId("");
-      setCustomerName("");
+      setCustomer(emptyCustomer);
       await fetchProducts(currentPage, localSearch, "All", stockFilter); // Refresh stock
     }
     setSelling(false);
@@ -638,19 +647,13 @@ const SellInner = () => {
                   </table>
                 </div>
 
-                <label className="flex flex-col gap-1.5 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Customer Name *
-                  </span>
-                  <input
-                    type="text"
-                    className={inputClass}
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    required
-                    placeholder="e.g. Walk-in Customer / Client Name"
+                <div className="mb-3">
+                  <CustomerDetailsForm
+                    value={customer}
+                    onChange={setCustomer}
+                    disabled={selling}
                   />
-                </label>
+                </div>
 
                 <Button
                   onClick={handleCheckout}

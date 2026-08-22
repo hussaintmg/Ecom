@@ -3,6 +3,11 @@ import mongoose, { Schema } from "mongoose";
 const CreditSaleSchema = new Schema(
   {
     customerName: { type: String, required: true },
+    customerPhone: { type: String, trim: true, default: "" },
+    customerEmail: { type: String, trim: true, default: "" },
+    customerAddress: { type: String, trim: true, default: "" },
+    customerCity: { type: String, trim: true, default: "" },
+    customerNote: { type: String, trim: true, default: "" },
     products: [
       {
         product: { type: Schema.Types.ObjectId, ref: "Product", required: true },

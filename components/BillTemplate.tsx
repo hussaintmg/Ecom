@@ -16,6 +16,10 @@ export interface BillData {
   invoiceNo: string;
   date: string;
   customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCity?: string;
   products?: BillProductItem[];
   totalAmount?: number;
   productName?: string;
@@ -64,6 +68,14 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
     data.totalPrice ||
     items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
   const isCredit = data.type === "Credit";
+
+  // Extra customer lines, printed under the name — only what was filled in.
+  const customerLines = [
+    data.customerPhone,
+    data.customerEmail,
+    [data.customerAddress, data.customerCity].filter(Boolean).join(", "),
+  ].filter(Boolean) as string[];
+
   const documentLabel = isCredit
     ? "CREDIT SALE RECEIPT"
     : data.type === "Repair"
@@ -440,7 +452,17 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                 textAlign: "left",
               }}
             >
-              Customer: <span style={{ fontWeight: "700", color: "#111827" }}>{esc(data.customerName || "Walk-in Customer")}</span>
+              <div>
+                Customer: <span style={{ fontWeight: "700", color: "#111827" }}>{esc(data.customerName || "Walk-in Customer")}</span>
+              </div>
+              {customerLines.map((line) => (
+                <div
+                  key={line}
+                  style={{ fontSize: "12px", fontWeight: "500", color: "#4b5563", marginTop: "3px" }}
+                >
+                  {esc(line)}
+                </div>
+              ))}
             </div>
             <div
               style={{ fontSize: "18px", fontWeight: "700", color: "#111827", textAlign: "right" }}

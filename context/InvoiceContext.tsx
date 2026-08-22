@@ -17,6 +17,11 @@ export interface InvoiceItem {
   _id: string;
   invoiceNo?: string;
   customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerNote?: string;
   product?: any;
   category?: any;
   quantity?: number;
@@ -28,6 +33,26 @@ export interface InvoiceItem {
   type?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface CreateInvoicePayload {
+  productId?: string;
+  quantity?: number;
+  salePrice?: number;
+  description?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerNote?: string;
+  products?: {
+    productId: string;
+    quantity: number;
+    salePrice: number;
+    description: string;
+  }[];
+  type?: string;
 }
 
 interface InvoiceContextType {
@@ -48,20 +73,7 @@ interface InvoiceContextType {
       endDate?: string;
     },
   ) => Promise<void>;
-  createInvoice: (data: {
-    productId?: string;
-    quantity?: number;
-    salePrice?: number;
-    description?: string;
-    customerName?: string;
-    products?: {
-      productId: string;
-      quantity: number;
-      salePrice: number;
-      description: string;
-    }[];
-    type?: string;
-  }) => Promise<any | null>;
+  createInvoice: (data: CreateInvoicePayload) => Promise<any | null>;
   getInvoiceById: (id: string) => Promise<InvoiceItem | null>;
   deleteInvoice: (id: string) => Promise<void>;
   setCurrentPage: (page: number) => void;
@@ -141,20 +153,9 @@ export const InvoiceProvider = ({
     [],
   );
 
-  const createInvoice = async (data: {
-    productId?: string;
-    quantity?: number;
-    salePrice?: number;
-    description?: string;
-    customerName?: string;
-    products?: {
-      productId: string;
-      quantity: number;
-      salePrice: number;
-      description: string;
-    }[];
-    type?: string;
-  }): Promise<any | null> => {
+  const createInvoice = async (
+    data: CreateInvoicePayload,
+  ): Promise<any | null> => {
     try {
       let res;
       if (data.type === "Repair") {

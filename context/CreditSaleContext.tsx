@@ -6,6 +6,11 @@ import { toast } from "@/components/ui/Toast";
 export interface CreditSaleItem {
   _id: string;
   customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerNote?: string;
   products: {
     product: any;
     category: any;
@@ -31,6 +36,21 @@ export interface CreditSaleItem {
   updatedAt?: string;
 }
 
+export interface CreateCreditSalePayload {
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCity?: string;
+  customerNote?: string;
+  products: {
+    productId: string;
+    quantity: number;
+    salePrice: number;
+    description: string;
+  }[];
+}
+
 interface CreditSaleContextType {
   creditSales: CreditSaleItem[];
   totalCreditSales: number;
@@ -48,15 +68,9 @@ interface CreditSaleContextType {
       endDate?: string;
     }
   ) => Promise<void>;
-  createCreditSale: (data: {
-    customerName: string;
-    products: {
-      productId: string;
-      quantity: number;
-      salePrice: number;
-      description: string;
-    }[];
-  }) => Promise<CreditSaleItem | null>;
+  createCreditSale: (
+    data: CreateCreditSalePayload
+  ) => Promise<CreditSaleItem | null>;
   addCreditPayment: (id: string, amount: number) => Promise<CreditSaleItem | null>;
   revertCreditSale: (id: string) => Promise<CreditSaleItem | null>;
   deleteCreditSale: (id: string) => Promise<boolean>;
@@ -122,15 +136,7 @@ export const CreditSaleProvider = ({
     []
   );
 
-  const createCreditSale = async (data: {
-    customerName: string;
-    products: {
-      productId: string;
-      quantity: number;
-      salePrice: number;
-      description: string;
-    }[];
-  }) => {
+  const createCreditSale = async (data: CreateCreditSalePayload) => {
     try {
       const res = await fetch("/api/credit-sales", {
         method: "POST",

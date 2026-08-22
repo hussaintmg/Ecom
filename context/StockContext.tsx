@@ -7,7 +7,14 @@ export interface StockLogEntry {
   product: string;
   change: number;
   description: string;
+  previousStock?: number;
   resultingStock: number;
+  /** Set once this entry has been undone — it can never be undone twice. */
+  reverted?: boolean;
+  revertedAt?: string;
+  revertedBy?: { name: string; email: string };
+  /** Present on compensating entries created by an undo. */
+  reversalOf?: string | null;
   performedBy?: { name: string; email: string };
   createdAt: string;
 }
@@ -21,6 +28,12 @@ interface StockContextType {
     change: number,
     description: string
   ) => Promise<boolean>;
+  setStockTo: (
+    productId: string,
+    setTo: number,
+    description: string
+  ) => Promise<boolean>;
+  undoStockChange: (productId: string, logId: string) => Promise<boolean>;
   deleteAllLogs: (productId: string) => Promise<boolean>;
   refresh: (productId: string) => Promise<void>;
 }
@@ -76,6 +89,57 @@ export const StockProvider = ({
     }
   };
 
+  /** Correct stock to an exact number — the quickest fix for a wrong entry. */
+  const setStockTo = async (
+    productId: string,
+    setTo: number,
+    description: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, setTo, description }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        toast.success(`Stock corrected to ${setTo}`);
+        await fetchLogs(productId);
+        return true;
+      }
+      toast.error(json.error || "Failed to correct stock");
+      return false;
+    } catch {
+      toast.error("Network error correcting stock");
+      return false;
+    }
+  };
+
+  /** Reverse one history entry — used when a wrong amount was entered. */
+  const undoStockChange = async (
+    productId: string,
+    logId: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/stock/${productId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logId }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success(json.message || "Stock entry undone");
+        await fetchLogs(productId);
+        return true;
+      }
+      toast.error(json.error || "Failed to undo stock entry");
+      return false;
+    } catch {
+      toast.error("Network error undoing stock entry");
+      return false;
+    }
+  };
+
   const deleteAllLogs = async (productId: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/stock/${productId}`, {
@@ -99,6 +163,8 @@ export const StockProvider = ({
         loading,
         fetchLogs,
         addStockChange,
+        setStockTo,
+        undoStockChange,
         deleteAllLogs,
         refresh: fetchLogs,
       }}

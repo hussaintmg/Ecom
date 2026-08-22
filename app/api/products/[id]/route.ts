@@ -5,6 +5,7 @@ import Category from "@/models/Category";
 import StockLog from "@/models/StockLog";
 import { deleteFromCloudinary } from "@/utils/cloudinary";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import { MAX_STOCK_CHANGE } from "@/constants/stock";
 
 export async function GET(
   req: NextRequest,
@@ -55,10 +56,61 @@ export async function PUT(
       });
     }
 
+    // Editing a product can also move its stock. Validate it like any other
+    // stock change, and write a StockLog so the movement shows up in the
+    // history — and can be undone from there if the number was wrong.
+    let stockLog: {
+      previousStock: number;
+      newStock: number;
+      change: number;
+    } | null = null;
+
+    if (data.stock !== undefined && data.stock !== null && data.stock !== "") {
+      const newStock = Number(data.stock);
+
+      if (!Number.isFinite(newStock) || !Number.isInteger(newStock)) {
+        return NextResponse.json(
+          { error: "Stock must be a whole number" },
+          { status: 400 },
+        );
+      }
+      if (newStock < 0) {
+        return NextResponse.json(
+          { error: "Stock cannot be negative" },
+          { status: 400 },
+        );
+      }
+      if (newStock > MAX_STOCK_CHANGE) {
+        return NextResponse.json(
+          {
+            error: `Stock cannot be above ${MAX_STOCK_CHANGE.toLocaleString()}. Please check the amount.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      data.stock = newStock;
+      const previousStock = oldProduct.stock ?? 0;
+      if (newStock !== previousStock) {
+        stockLog = { previousStock, newStock, change: newStock - previousStock };
+      }
+    }
+
     const product = await Product.findByIdAndUpdate(id, data, {
       returnDocument: "after",
       runValidators: true,
     }).populate("category");
+
+    if (stockLog) {
+      await StockLog.create({
+        product: id,
+        change: stockLog.change,
+        description: `Stock changed while editing the product (${stockLog.previousStock} → ${stockLog.newStock})`,
+        previousStock: stockLog.previousStock,
+        resultingStock: stockLog.newStock,
+        performedBy: user.id,
+      });
+    }
 
     return NextResponse.json(product);
   } catch (error: any) {

@@ -135,6 +135,13 @@ export const downloadInvoicePDF = async (invoice: any) => {
   const seller = esc(invoice.soldBy?.name || "M S ELECTRIC AND ELECTRONICS");
   const invoiceType = invoice.type || "Sell";
   const isCredit = invoiceType === "Credit";
+
+  // Extra customer lines, printed under the name — only what was filled in.
+  const customerLines: string[] = [
+    invoice.customerPhone,
+    invoice.customerEmail,
+    [invoice.customerAddress, invoice.customerCity].filter(Boolean).join(", "),
+  ].filter(Boolean);
   const documentTitle = isCredit
     ? "CREDIT SALE RECEIPT"
     : invoiceType === "Repair"
@@ -185,7 +192,13 @@ export const downloadInvoicePDF = async (invoice: any) => {
           <!-- TOTAL & CUSTOMER NAME -->
           <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:2px solid #1f2937;margin-bottom:24px;">
             <div style="font-size:14px;font-weight:600;color:#374151;text-align:left;">
-              Customer: <span style="font-weight:700;color:#111827;">${esc(invoice.customerName || "Walk-in Customer")}</span>
+              <div>Customer: <span style="font-weight:700;color:#111827;">${esc(invoice.customerName || "Walk-in Customer")}</span></div>
+              ${customerLines
+                .map(
+                  (line: string) =>
+                    `<div style="font-size:12px;font-weight:500;color:#4b5563;margin-top:3px;">${esc(line)}</div>`
+                )
+                .join("")}
             </div>
             <div style="font-size:18px;font-weight:700;color:#111827;text-align:right;">
               ${isCredit ? "Total Credit" : "Total Payable"}: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
