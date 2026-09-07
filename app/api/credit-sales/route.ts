@@ -109,14 +109,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const creditItems = [];
-    let totalAmount = 0;
-
+    // 1. Validate inputs and calculate cumulative stock needed per product
+    const totalQtyNeededMap: Record<string, number> = {};
     for (const item of products) {
-      const qty = Number(item.quantity);
-      const price = Number(item.salePrice);
+      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice } = item;
 
-      if (!item.productId || qty <= 0 || price <= 0) {
+      if (!itemProductId || itemQty === undefined || itemPrice === undefined) {
         return NextResponse.json(
           {
             success: false,
@@ -126,41 +124,91 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const product = await Product.findById(item.productId);
+      const qty = Number(itemQty);
+      const price = Number(itemPrice);
+
+      if (isNaN(qty) || qty <= 0) {
+        return NextResponse.json(
+          { success: false, error: "Quantity must be greater than zero" },
+          { status: 400 }
+        );
+      }
+
+      if (isNaN(price) || price <= 0) {
+        return NextResponse.json(
+          { success: false, error: "Credit price must be greater than zero" },
+          { status: 400 }
+        );
+      }
+
+      const pidStr = String(itemProductId);
+      totalQtyNeededMap[pidStr] = (totalQtyNeededMap[pidStr] || 0) + qty;
+    }
+
+    // Verify stock availability for cumulative quantities
+    for (const [pId, totalQty] of Object.entries(totalQtyNeededMap)) {
+      const product = await Product.findById(pId);
       if (!product) {
         return NextResponse.json(
-          { success: false, error: `Product not found: ${item.productId}` },
+          { success: false, error: `Product not found: ${pId}` },
           { status: 404 }
         );
       }
 
-      if (product.stock < qty) {
+      if (product.stock < totalQty) {
         return NextResponse.json(
           {
             success: false,
-            error: `Insufficient stock for ${product.name}! Only ${product.stock} available.`,
+            error: `Insufficient stock for ${product.name}! Available: ${product.stock}, Total requested: ${totalQty}.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 2. Perform atomic stock deductions, create StockLogs, and collect credit items
+    const creditItems = [];
+    let totalAmount = 0;
+
+    for (const item of products) {
+      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice, description: itemDesc } = item;
+      const qty = Number(itemQty);
+      const price = Number(itemPrice);
+
+      const prevDoc = await Product.findOneAndUpdate(
+        { _id: itemProductId, stock: { $gte: qty } },
+        { $inc: { stock: -qty } },
+        { new: false }
+      );
+
+      if (!prevDoc) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Stock changed concurrently or insufficient stock for product ID: ${itemProductId}`,
           },
           { status: 400 }
         );
       }
 
-      product.stock = product.stock - qty;
-      await product.save();
+      const previousStock = prevDoc.stock;
+      const resultingStock = previousStock - qty;
 
       await StockLog.create({
-        product: product._id,
+        product: itemProductId,
         change: -qty,
-        description: `Credit sale created for ${customerName}${item.description ? `: ${item.description}` : ""}`,
-        resultingStock: product.stock,
+        description: `Credit sale created for ${customerName}${itemDesc ? `: ${itemDesc}` : ""}`,
+        previousStock,
+        resultingStock,
         performedBy: user.id,
       });
 
       creditItems.push({
-        product: product._id,
-        category: product.category,
+        product: itemProductId,
+        category: prevDoc.category,
         quantity: qty,
         salePrice: price,
-        description: item.description || "",
+        description: itemDesc || "",
       });
       totalAmount += price;
     }

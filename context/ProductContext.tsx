@@ -91,7 +91,13 @@ export const ProductProvider = ({
           queryParams.append("stock", stock);
         }
 
-        const res = await fetch(`/api/products?${queryParams}`);
+        const res = await fetch(`/api/products?${queryParams}&_t=${Date.now()}`, {
+          cache: "no-store",
+          headers: {
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache",
+          },
+        });
         const data = await res.json();
 
         if (!res.ok) {

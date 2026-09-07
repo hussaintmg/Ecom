@@ -35,6 +35,7 @@ const SellInner = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
+  const [unitPrice, setUnitPrice] = useState<number>(0);
   const [description, setDescription] = useState("");
   const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [selling, setSelling] = useState(false);
@@ -87,11 +88,32 @@ const SellInner = () => {
 
   const handleProductSelect = (productId: string) => {
     setSelectedProductId(productId);
-    setEditingIndex(null); // Clear edit mode when selecting a new product
-    // Reset form fields when new product is selected
-    setQuantity("");
-    setSalePrice("");
+    setEditingIndex(null);
+    const prod = products.find((p) => p._id === productId);
+    const basePrice = prod ? Number(prod.price) : 0;
+    setUnitPrice(basePrice);
+    setQuantity("1");
+    setSalePrice(basePrice > 0 ? basePrice.toString() : "");
     setDescription("");
+  };
+
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val);
+    const q = Number(val);
+    if (!isNaN(q) && q > 0 && unitPrice > 0) {
+      setSalePrice(Math.round(unitPrice * q).toString());
+    } else if (val === "") {
+      setSalePrice("");
+    }
+  };
+
+  const handleSalePriceChange = (val: string) => {
+    setSalePrice(val);
+    const p = Number(val);
+    const q = Number(quantity);
+    if (!isNaN(p) && p > 0 && !isNaN(q) && q > 0) {
+      setUnitPrice(p / q);
+    }
   };
 
   const goToPreviousPage = () => {
@@ -170,22 +192,40 @@ const SellInner = () => {
       setEditingIndex(null);
       alert("Item updated successfully inside invoice list!");
     } else {
-      // Append new item
-      setAppendedProducts([
-        ...appendedProducts,
-        {
-          productId: selectedProduct._id,
-          product: selectedProduct,
-          quantity: qty,
-          salePrice: price,
-          description: description.trim(),
-        }
-      ]);
+      // Check if product is already appended to consolidate
+      const existingIdx = appendedProducts.findIndex(item => item.productId === selectedProduct._id);
+      if (existingIdx !== -1) {
+        const updatedList = [...appendedProducts];
+        const existingItem = updatedList[existingIdx];
+        const combinedQty = existingItem.quantity + qty;
+        const combinedPrice = existingItem.salePrice + price;
+        const combinedDesc = [existingItem.description, description.trim()].filter(Boolean).join(", ");
+        updatedList[existingIdx] = {
+          ...existingItem,
+          quantity: combinedQty,
+          salePrice: combinedPrice,
+          description: combinedDesc,
+        };
+        setAppendedProducts(updatedList);
+      } else {
+        // Append new item
+        setAppendedProducts([
+          ...appendedProducts,
+          {
+            productId: selectedProduct._id,
+            product: selectedProduct,
+            quantity: qty,
+            salePrice: price,
+            description: description.trim(),
+          }
+        ]);
+      }
     }
 
     // Clear form
     setQuantity("");
     setSalePrice("");
+    setUnitPrice(0);
     setDescription("");
     setSelectedProductId("");
   };
@@ -195,6 +235,8 @@ const SellInner = () => {
     setSelectedProductId(item.productId);
     setQuantity(item.quantity.toString());
     setSalePrice(item.salePrice.toString());
+    const effUnitPrice = item.quantity > 0 ? item.salePrice / item.quantity : (item.product?.price || 0);
+    setUnitPrice(effUnitPrice);
     setDescription(item.description);
     setEditingIndex(index);
   };
@@ -207,6 +249,7 @@ const SellInner = () => {
         setEditingIndex(null);
         setQuantity("");
         setSalePrice("");
+        setUnitPrice(0);
         setDescription("");
         setSelectedProductId("");
       } else if (editingIndex !== null && editingIndex > index) {
@@ -284,6 +327,7 @@ const SellInner = () => {
       setEditingIndex(null);
       setQuantity("");
       setSalePrice("");
+      setUnitPrice(0);
       setDescription("");
       setSelectedProductId("");
       setCustomer(emptyCustomer);
@@ -521,6 +565,7 @@ const SellInner = () => {
                         setEditingIndex(null);
                         setQuantity("");
                         setSalePrice("");
+                        setUnitPrice(0);
                         setDescription("");
                         setSelectedProductId("");
                       }}
@@ -554,7 +599,7 @@ const SellInner = () => {
                   type="number"
                   className={inputClass}
                   value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
+                  onChange={(e) => handleQuantityChange(e.target.value)}
                   required
                   min={1}
                   placeholder="e.g. 2"
@@ -568,7 +613,7 @@ const SellInner = () => {
                   type="number"
                   className={inputClass}
                   value={salePrice}
-                  onChange={(e) => setSalePrice(e.target.value)}
+                  onChange={(e) => handleSalePriceChange(e.target.value)}
                   required
                   min={1}
                   placeholder="e.g. 2500"

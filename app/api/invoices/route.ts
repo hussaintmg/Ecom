@@ -173,14 +173,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Validate all products and stock limits first
-    const validatedItems = [];
-    let calculatedTotalAmount = 0;
-
+    // 1. Validate inputs and calculate cumulative stock needed per product
+    const totalQtyNeededMap: Record<string, number> = {};
     for (const item of items) {
-      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice, description: itemDesc } = item;
+      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice } = item;
 
-      if (!itemProductId || !itemQty || !itemPrice) {
+      if (!itemProductId || itemQty === undefined || itemPrice === undefined) {
         return NextResponse.json(
           { success: false, error: "Product, quantity, and sale price are required for all items" },
           { status: 400 }
@@ -190,75 +188,94 @@ export async function POST(req: NextRequest) {
       const qty = Number(itemQty);
       const price = Number(itemPrice);
 
-      if (qty <= 0) {
+      if (isNaN(qty) || qty <= 0) {
         return NextResponse.json(
           { success: false, error: "Sell quantity must be greater than zero" },
           { status: 400 }
         );
       }
 
-      if (price <= 0) {
+      if (isNaN(price) || price <= 0) {
         return NextResponse.json(
           { success: false, error: "Total sale price must be greater than zero" },
           { status: 400 }
         );
       }
 
-      const product = await Product.findById(itemProductId);
+      const pidStr = String(itemProductId);
+      totalQtyNeededMap[pidStr] = (totalQtyNeededMap[pidStr] || 0) + qty;
+    }
+
+    // Verify stock availability for cumulative quantities
+    for (const [pId, totalQty] of Object.entries(totalQtyNeededMap)) {
+      const product = await Product.findById(pId);
       if (!product) {
         return NextResponse.json(
-          { success: false, error: `Product not found with ID: ${itemProductId}` },
+          { success: false, error: `Product not found with ID: ${pId}` },
           { status: 404 }
         );
       }
 
-      if (product.stock < qty) {
+      if (product.stock < totalQty) {
         return NextResponse.json(
-          { success: false, error: `Insufficient stock for ${product.name}! Only ${product.stock} available.` },
+          {
+            success: false,
+            error: `Insufficient stock for ${product.name}! Available: ${product.stock}, Total requested: ${totalQty}.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 2. Perform atomic stock deductions, create StockLogs, and collect invoice products
+    const invoiceItems = [];
+    let calculatedTotalAmount = 0;
+
+    for (const item of items) {
+      const { productId: itemProductId, quantity: itemQty, salePrice: itemPrice, description: itemDesc } = item;
+      const qty = Number(itemQty);
+      const price = Number(itemPrice);
+
+      // Deduct stock atomically in MongoDB
+      const prevDoc = await Product.findOneAndUpdate(
+        { _id: itemProductId, stock: { $gte: qty } },
+        { $inc: { stock: -qty } },
+        { new: false }
+      );
+
+      if (!prevDoc) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Stock changed concurrently or insufficient stock for product ID: ${itemProductId}`,
+          },
           { status: 400 }
         );
       }
 
-      validatedItems.push({
-        productObj: product,
-        qty,
-        price,
-        description: itemDesc || "",
-      });
+      const previousStock = prevDoc.stock;
+      const resultingStock = previousStock - qty;
 
-      calculatedTotalAmount += price;
-    }
-
-    // 2. Perform stock deductions, create StockLogs, and collect invoice products
-    const invoiceItems = [];
-
-    for (const validated of validatedItems) {
-      const { productObj, qty, price, description: itemDesc } = validated;
-
-      // Deduct stock
-      const previousStock = productObj.stock;
-      const newStock = previousStock - qty;
-      productObj.stock = newStock;
-      await productObj.save();
-
-      // Log Stock change
+      // Log Stock change with accurate quantities
       await StockLog.create({
-        product: productObj._id,
+        product: itemProductId,
         change: -qty,
         description: `Manual Sell${itemDesc ? `: ${itemDesc}` : ""}`,
         previousStock,
-        resultingStock: newStock,
+        resultingStock,
         performedBy: user.id,
       });
 
       // Prepare nested invoice array element
       invoiceItems.push({
-        product: productObj._id,
-        category: productObj.category,
+        product: itemProductId,
+        category: prevDoc.category,
         quantity: qty,
         salePrice: price,
         description: itemDesc || "",
       });
+
+      calculatedTotalAmount += price;
     }
 
     // 3. Create Multi-Product Invoice

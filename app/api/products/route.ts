@@ -7,6 +7,8 @@ import StockLog from "@/models/StockLog";
 import { MAX_STOCK_CHANGE } from "@/constants/stock";
 import mongoose from "mongoose";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -123,15 +125,24 @@ export async function GET(req: NextRequest) {
     ]);
     const totalStock = stockResult.length > 0 ? stockResult[0].totalStock : 0;
 
-    return NextResponse.json({
-      success: true,
-      products,
-      totalProducts,
-      totalPages,
-      totalStock,
-      currentPage: page,
-      hasMore: skip + products.length < totalProducts,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        products,
+        totalProducts,
+        totalPages,
+        totalStock,
+        currentPage: page,
+        hasMore: skip + products.length < totalProducts,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Error fetching products:", error);
     return NextResponse.json(

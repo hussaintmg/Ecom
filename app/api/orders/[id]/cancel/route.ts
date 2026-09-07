@@ -6,9 +6,12 @@ import Product from "@/models/Product";
 import mongoose from "mongoose";
 import { getUserFromRequest } from "@/utils/authHelpers";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-01-27.acacia" as any,
-});
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY || "sk_test_placeholder_key_for_build";
+  return new Stripe(secretKey, {
+    apiVersion: "2025-01-27.acacia" as any,
+  });
+}
 
 export async function POST(
   req: NextRequest,
@@ -52,6 +55,7 @@ export async function POST(
       order.paymentId !== "N/A"
     ) {
       try {
+        const stripe = getStripe();
         const refund = await stripe.refunds.create({
           payment_intent: order.paymentId,
         });

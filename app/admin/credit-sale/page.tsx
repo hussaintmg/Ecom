@@ -47,6 +47,7 @@ const CreditSaleInner = () => {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
+  const [unitPrice, setUnitPrice] = useState<number>(0);
   const [description, setDescription] = useState("");
   const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [saving, setSaving] = useState(false);
@@ -94,9 +95,40 @@ const CreditSaleInner = () => {
   const resetItemForm = () => {
     setQuantity("");
     setSalePrice("");
+    setUnitPrice(0);
     setDescription("");
     setSelectedProductId("");
     setEditingIndex(null);
+  };
+
+  const handleProductSelect = (productId: string) => {
+    setSelectedProductId(productId);
+    setEditingIndex(null);
+    const prod = products.find((p) => p._id === productId);
+    const basePrice = prod ? Number(prod.price) : 0;
+    setUnitPrice(basePrice);
+    setQuantity("1");
+    setSalePrice(basePrice > 0 ? basePrice.toString() : "");
+    setDescription("");
+  };
+
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val);
+    const q = Number(val);
+    if (!isNaN(q) && q > 0 && unitPrice > 0) {
+      setSalePrice(Math.round(unitPrice * q).toString());
+    } else if (val === "") {
+      setSalePrice("");
+    }
+  };
+
+  const handleSalePriceChange = (val: string) => {
+    setSalePrice(val);
+    const p = Number(val);
+    const q = Number(quantity);
+    if (!isNaN(p) && p > 0 && !isNaN(q) && q > 0) {
+      setUnitPrice(p / q);
+    }
   };
 
   const handleAppendItem = (e: React.FormEvent) => {
@@ -142,7 +174,20 @@ const CreditSaleInner = () => {
       updatedList[editingIndex] = item;
       setAppendedProducts(updatedList);
     } else {
-      setAppendedProducts([...appendedProducts, item]);
+      const existingIdx = appendedProducts.findIndex(p => p.productId === selectedProduct._id);
+      if (existingIdx !== -1) {
+        const updatedList = [...appendedProducts];
+        const existing = updatedList[existingIdx];
+        updatedList[existingIdx] = {
+          ...existing,
+          quantity: existing.quantity + qty,
+          salePrice: existing.salePrice + price,
+          description: [existing.description, description.trim()].filter(Boolean).join(", "),
+        };
+        setAppendedProducts(updatedList);
+      } else {
+        setAppendedProducts([...appendedProducts, item]);
+      }
     }
 
     resetItemForm();
@@ -153,6 +198,8 @@ const CreditSaleInner = () => {
     setSelectedProductId(item.productId);
     setQuantity(item.quantity.toString());
     setSalePrice(item.salePrice.toString());
+    const effUnitPrice = item.quantity > 0 ? item.salePrice / item.quantity : (item.product?.price || 0);
+    setUnitPrice(effUnitPrice);
     setDescription(item.description);
     setEditingIndex(index);
   };
@@ -227,6 +274,7 @@ const CreditSaleInner = () => {
       setAppendedProducts([]);
       setCustomer(emptyCustomer);
       resetItemForm();
+      await fetchProducts(currentPage, localSearch, "All", stockFilter);
     }
 
     setSaving(false);
@@ -322,13 +370,7 @@ const CreditSaleInner = () => {
                     <button
                       key={p._id}
                       type="button"
-                      onClick={() => {
-                        setSelectedProductId(p._id);
-                        setEditingIndex(null);
-                        setQuantity("");
-                        setSalePrice("");
-                        setDescription("");
-                      }}
+                      onClick={() => handleProductSelect(p._id)}
                       className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
                         selectedProductId === p._id
                           ? "border-primary bg-primary/5 ring-1 ring-primary/20"
@@ -465,7 +507,7 @@ const CreditSaleInner = () => {
                   type="number"
                   className={inputClass}
                   value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
+                  onChange={(e) => handleQuantityChange(e.target.value)}
                   required
                   min={1}
                   placeholder="e.g. 2"
@@ -479,7 +521,7 @@ const CreditSaleInner = () => {
                   type="number"
                   className={inputClass}
                   value={salePrice}
-                  onChange={(e) => setSalePrice(e.target.value)}
+                  onChange={(e) => handleSalePriceChange(e.target.value)}
                   required
                   min={1}
                   placeholder="e.g. 2500"
