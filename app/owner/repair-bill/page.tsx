@@ -597,7 +597,7 @@ const SellInner = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Quantity Repaired *
@@ -611,20 +611,6 @@ const SellInner = () => {
                   min={0.1}
                   step="any"
                   placeholder="e.g. 2"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Unit Cost (PKR)
-                </span>
-                <input
-                  type="number"
-                  className={inputClass}
-                  value={unitPrice}
-                  onChange={handleUnitPriceChange}
-                  min={0}
-                  step="any"
-                  placeholder="e.g. 1000"
                 />
               </label>
               <label className="flex flex-col gap-1.5">

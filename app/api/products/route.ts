@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
 
     const products = rawProducts.map((p: any) => ({
       ...p,
-      price: typeof p.price === "number" && !isNaN(p.price) ? p.price : 0,
+      price: p.price !== undefined && p.price !== null && !isNaN(Number(p.price)) ? Number(p.price) : 0,
     }));
 
     // =========================

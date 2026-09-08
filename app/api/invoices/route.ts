@@ -266,6 +266,12 @@ export async function POST(req: NextRequest) {
         performedBy: user.id,
       });
 
+      // Update product price if not already set or zero
+      const unitP = Math.round(price / qty);
+      if (unitP > 0 && (!prevDoc.price || prevDoc.price === 0)) {
+        await Product.updateOne({ _id: itemProductId }, { $set: { price: unitP } });
+      }
+
       // Prepare nested invoice array element
       invoiceItems.push({
         product: itemProductId,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/utils/db";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
+import Invoice from "@/models/Invoice";
+import CreditSale from "@/models/CreditSale";
 
 export const dynamic = "force-dynamic";
 
@@ -187,12 +189,70 @@ async function reconcileStockHandler(req: NextRequest) {
       }
     }
 
+    // 4. Backfill product prices from latest Invoices and CreditSales if product price is 0 or missing
+    let pricesUpdatedCount = 0;
+    try {
+      const invoices = await Invoice.find({ "products.0": { $exists: true } })
+        .sort({ createdAt: 1 })
+        .lean();
+      const creditSales = await CreditSale.find({ "products.0": { $exists: true } })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      const priceMap = new Map<string, number>();
+
+      for (const inv of invoices) {
+        if (Array.isArray(inv.products)) {
+          for (const item of inv.products) {
+            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const qty = Number(item.quantity) || 1;
+            const saleP = Number(item.salePrice) || 0;
+            if (rawProdId && qty > 0 && saleP > 0) {
+              const unitP = Math.round(saleP / qty);
+              if (unitP > 0) {
+                priceMap.set(rawProdId.toString(), unitP);
+              }
+            }
+          }
+        }
+      }
+
+      for (const cs of creditSales) {
+        if (Array.isArray(cs.products)) {
+          for (const item of cs.products) {
+            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const qty = Number(item.quantity) || 1;
+            const saleP = Number(item.salePrice) || 0;
+            if (rawProdId && qty > 0 && saleP > 0) {
+              const unitP = Math.round(saleP / qty);
+              if (unitP > 0) {
+                priceMap.set(rawProdId.toString(), unitP);
+              }
+            }
+          }
+        }
+      }
+
+      for (const [pId, unitP] of priceMap.entries()) {
+        const updateRes = await Product.updateOne(
+          { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
+          { $set: { price: unitP } }
+        );
+        if (updateRes.modifiedCount > 0) {
+          pricesUpdatedCount++;
+        }
+      }
+    } catch (priceErr) {
+      console.error("Error backfilling prices:", priceErr);
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Stock reconciliation completed successfully.",
+      message: "Stock and price reconciliation completed successfully.",
       totalProductsChecked: products.length,
       productsUpdatedCount: totalProductsUpdated,
       stockLogsCorrectedCount: totalLogsCorrected,
+      pricesUpdatedCount,
       modifiedProducts: details,
     });
   } catch (error: any) {

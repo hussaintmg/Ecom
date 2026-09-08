@@ -35,7 +35,7 @@ const SellInner = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
-  const [unitPrice, setUnitPrice] = useState<string>("");
+  const [unitPrice, setUnitPrice] = useState<number>(0);
   const [description, setDescription] = useState("");
   const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [selling, setSelling] = useState(false);
@@ -96,10 +96,10 @@ const SellInner = () => {
         : 0;
     setQuantity("1");
     if (basePrice > 0) {
-      setUnitPrice(basePrice.toString());
+      setUnitPrice(basePrice);
       setSalePrice(basePrice.toString());
     } else {
-      setUnitPrice("");
+      setUnitPrice(0);
       setSalePrice("");
     }
     setDescription("");
@@ -108,22 +108,8 @@ const SellInner = () => {
   const handleQuantityChange = (val: string) => {
     setQuantity(val);
     const q = Number(val);
-    const u = Number(unitPrice);
-    if (!isNaN(q) && q > 0) {
-      if (!isNaN(u) && u > 0) {
-        setSalePrice(Math.round(u * q).toString());
-      }
-    } else if (val === "") {
-      setSalePrice("");
-    }
-  };
-
-  const handleUnitPriceChange = (val: string) => {
-    setUnitPrice(val);
-    const u = Number(val);
-    const q = Number(quantity);
-    if (!isNaN(u) && u >= 0 && !isNaN(q) && q > 0) {
-      setSalePrice(Math.round(u * q).toString());
+    if (!isNaN(q) && q > 0 && unitPrice > 0) {
+      setSalePrice(Math.round(unitPrice * q).toString());
     } else if (val === "") {
       setSalePrice("");
     }
@@ -133,11 +119,10 @@ const SellInner = () => {
     setSalePrice(val);
     const p = Number(val);
     const q = Number(quantity);
-    if (!isNaN(p) && p >= 0 && !isNaN(q) && q > 0) {
-      const calculatedUnit = parseFloat((p / q).toFixed(2));
-      setUnitPrice(calculatedUnit.toString());
+    if (!isNaN(p) && p > 0 && !isNaN(q) && q > 0) {
+      setUnitPrice(p / q);
     } else if (val === "") {
-      setUnitPrice("");
+      setUnitPrice(0);
     }
   };
 
@@ -250,7 +235,7 @@ const SellInner = () => {
     // Clear form
     setQuantity("");
     setSalePrice("");
-    setUnitPrice("");
+    setUnitPrice(0);
     setDescription("");
     setSelectedProductId("");
   };
@@ -260,8 +245,8 @@ const SellInner = () => {
     setSelectedProductId(item.productId);
     setQuantity(item.quantity.toString());
     setSalePrice(item.salePrice.toString());
-    const effUnitPrice = item.quantity > 0 ? parseFloat((item.salePrice / item.quantity).toFixed(2)) : (item.product?.price || 0);
-    setUnitPrice(effUnitPrice > 0 ? effUnitPrice.toString() : "");
+    const effUnitPrice = item.quantity > 0 ? (item.salePrice / item.quantity) : (item.product?.price || 0);
+    setUnitPrice(effUnitPrice);
     setDescription(item.description);
     setEditingIndex(index);
   };
@@ -274,7 +259,7 @@ const SellInner = () => {
         setEditingIndex(null);
         setQuantity("");
         setSalePrice("");
-        setUnitPrice("");
+        setUnitPrice(0);
         setDescription("");
         setSelectedProductId("");
       } else if (editingIndex !== null && editingIndex > index) {
@@ -353,7 +338,7 @@ const SellInner = () => {
       setEditingIndex(null);
       setQuantity("");
       setSalePrice("");
-      setUnitPrice("");
+      setUnitPrice(0);
       setDescription("");
       setSelectedProductId("");
       setCustomer(emptyCustomer);
@@ -596,7 +581,7 @@ const SellInner = () => {
                         setEditingIndex(null);
                         setQuantity("");
                         setSalePrice("");
-                        setUnitPrice("");
+                        setUnitPrice(0);
                         setDescription("");
                         setSelectedProductId("");
                       }}
@@ -621,7 +606,7 @@ const SellInner = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Quantity Sold *
@@ -634,19 +619,6 @@ const SellInner = () => {
                   required
                   min={1}
                   placeholder="e.g. 2"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Unit Price (PKR)
-                </span>
-                <input
-                  type="number"
-                  step="any"
-                  className={inputClass}
-                  value={unitPrice}
-                  onChange={(e) => handleUnitPriceChange(e.target.value)}
-                  placeholder="e.g. 1000"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
