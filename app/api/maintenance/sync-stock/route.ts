@@ -6,6 +6,7 @@ import Invoice from "@/models/Invoice";
 import CreditSale from "@/models/CreditSale";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 interface ReconcileResult {
   productId: string;
@@ -21,7 +22,64 @@ async function reconcileStockHandler(req: NextRequest) {
   try {
     await connectDB();
 
-    // 1. Read optional productId from URL params or POST JSON body
+    // 1. Backfill product prices from latest Invoices and CreditSales FIRST
+    let pricesUpdatedCount = 0;
+    try {
+      const invoices = await Invoice.find({ "products.0": { $exists: true } })
+        .sort({ createdAt: 1 })
+        .lean();
+      const creditSales = await CreditSale.find({ "products.0": { $exists: true } })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      const priceMap = new Map<string, number>();
+
+      for (const inv of invoices) {
+        if (Array.isArray(inv.products)) {
+          for (const item of inv.products) {
+            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const qty = Number(item.quantity) || 1;
+            const saleP = Number(item.salePrice) || 0;
+            if (rawProdId && qty > 0 && saleP > 0) {
+              const unitP = Math.round(saleP / qty);
+              if (unitP > 0) {
+                priceMap.set(rawProdId.toString(), unitP);
+              }
+            }
+          }
+        }
+      }
+
+      for (const cs of creditSales) {
+        if (Array.isArray(cs.products)) {
+          for (const item of cs.products) {
+            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const qty = Number(item.quantity) || 1;
+            const saleP = Number(item.salePrice) || 0;
+            if (rawProdId && qty > 0 && saleP > 0) {
+              const unitP = Math.round(saleP / qty);
+              if (unitP > 0) {
+                priceMap.set(rawProdId.toString(), unitP);
+              }
+            }
+          }
+        }
+      }
+
+      for (const [pId, unitP] of priceMap.entries()) {
+        const updateRes = await Product.updateOne(
+          { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
+          { $set: { price: unitP } }
+        );
+        if (updateRes.modifiedCount > 0) {
+          pricesUpdatedCount++;
+        }
+      }
+    } catch (priceErr) {
+      console.error("Error backfilling prices:", priceErr);
+    }
+
+    // 2. Read optional productId from URL params or POST JSON body
     let targetProductId: string | null = null;
     const { searchParams } = new URL(req.url);
     if (searchParams.get("productId")) {
@@ -33,14 +91,24 @@ async function reconcileStockHandler(req: NextRequest) {
           targetProductId = body.productId;
         }
       } catch {
-        // Body was empty or not JSON, proceed with all products
+        // Body was empty or not JSON, proceed
       }
     }
 
-    // 2. Fetch products to reconcile
+    // Ensure all products with null/undefined stock are set to 0 in one bulk query
+    await Product.updateMany(
+      { $or: [{ stock: null }, { stock: { $exists: false } }] },
+      { $set: { stock: 0 } }
+    );
+
+    // 3. Fetch ONLY products that need ledger reconciliation
     const productQuery: any = {};
     if (targetProductId) {
       productQuery._id = targetProductId;
+    } else {
+      // High-performance optimization: only query products that have recorded stock logs
+      const productIdsWithLogs = await StockLog.distinct("product");
+      productQuery._id = { $in: productIdsWithLogs };
     }
 
     const products = await Product.find(productQuery).select("_id name stock");
@@ -187,63 +255,6 @@ async function reconcileStockHandler(req: NextRequest) {
           logsCorrected: logsUpdatedForProduct,
         });
       }
-    }
-
-    // 4. Backfill product prices from latest Invoices and CreditSales if product price is 0 or missing
-    let pricesUpdatedCount = 0;
-    try {
-      const invoices = await Invoice.find({ "products.0": { $exists: true } })
-        .sort({ createdAt: 1 })
-        .lean();
-      const creditSales = await CreditSale.find({ "products.0": { $exists: true } })
-        .sort({ createdAt: 1 })
-        .lean();
-
-      const priceMap = new Map<string, number>();
-
-      for (const inv of invoices) {
-        if (Array.isArray(inv.products)) {
-          for (const item of inv.products) {
-            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
-            const qty = Number(item.quantity) || 1;
-            const saleP = Number(item.salePrice) || 0;
-            if (rawProdId && qty > 0 && saleP > 0) {
-              const unitP = Math.round(saleP / qty);
-              if (unitP > 0) {
-                priceMap.set(rawProdId.toString(), unitP);
-              }
-            }
-          }
-        }
-      }
-
-      for (const cs of creditSales) {
-        if (Array.isArray(cs.products)) {
-          for (const item of cs.products) {
-            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
-            const qty = Number(item.quantity) || 1;
-            const saleP = Number(item.salePrice) || 0;
-            if (rawProdId && qty > 0 && saleP > 0) {
-              const unitP = Math.round(saleP / qty);
-              if (unitP > 0) {
-                priceMap.set(rawProdId.toString(), unitP);
-              }
-            }
-          }
-        }
-      }
-
-      for (const [pId, unitP] of priceMap.entries()) {
-        const updateRes = await Product.updateOne(
-          { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
-          { $set: { price: unitP } }
-        );
-        if (updateRes.modifiedCount > 0) {
-          pricesUpdatedCount++;
-        }
-      }
-    } catch (priceErr) {
-      console.error("Error backfilling prices:", priceErr);
     }
 
     return NextResponse.json({
