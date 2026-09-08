@@ -8,6 +8,18 @@ import "@/models/User";
 import "@/models/Category";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+interface CorrectedLogPreview {
+  logId: string;
+  description: string;
+  change: number;
+  oldPrevious: number | undefined;
+  newPrevious: number;
+  oldResulting: number | undefined;
+  newResulting: number;
+  date?: string;
+}
 
 interface ReconcileResult {
   productId: string;
@@ -17,15 +29,7 @@ interface ReconcileResult {
   stockChanged: boolean;
   totalLogs: number;
   logsCorrected: number;
-  correctedLogsPreview?: {
-    logId: string;
-    description: string;
-    change: number;
-    oldPrevious: number | undefined;
-    newPrevious: number;
-    oldResulting: number | undefined;
-    newResulting: number;
-  }[];
+  correctedLogsPreview: CorrectedLogPreview[];
 }
 
 async function reconcileStockHandler(req: NextRequest) {
@@ -42,23 +46,22 @@ async function reconcileStockHandler(req: NextRequest) {
           targetProductId = body.productId;
         }
       } catch {
-        // Body was empty or not JSON, proceed with all
+        // Empty or non-JSON body, proceed with all products
       }
     }
 
     // =========================================================================
     // STEP 1: Fast in-memory price backfill from Invoices and CreditSales
+    // Only updates products whose price is currently 0, missing, or null.
     // =========================================================================
     let pricesUpdatedCount = 0;
     try {
       const invoices = await Invoice.find({})
-        .select("products product quantity salePrice createdAt")
-        .sort({ createdAt: 1 })
+        .select("products product quantity salePrice")
         .lean();
 
       const creditSales = await CreditSale.find({})
-        .select("products createdAt")
-        .sort({ createdAt: 1 })
+        .select("products")
         .lean();
 
       const priceMap = new Map<string, number>();
@@ -102,7 +105,10 @@ async function reconcileStockHandler(req: NextRequest) {
 
       const priceBulkOps = Array.from(priceMap.entries()).map(([pId, unitP]) => ({
         updateOne: {
-          filter: { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }, { price: null }] },
+          filter: {
+            _id: pId,
+            $or: [{ price: 0 }, { price: { $exists: false } }, { price: null }],
+          },
           update: { $set: { price: unitP } },
         },
       }));
@@ -112,23 +118,22 @@ async function reconcileStockHandler(req: NextRequest) {
         pricesUpdatedCount = bulkRes.modifiedCount || 0;
       }
     } catch (priceErr) {
-      console.error("Error backfilling prices:", priceErr);
+      console.error("Price backfill non-fatal error:", priceErr);
     }
 
     // =========================================================================
-    // STEP 2: Fetch Stock Logs and Products in 2 bulk queries
+    // STEP 2: Fetch Stock Logs for target product or all products with logs
+    // NOTE: Avoid unindexed database sorts to prevent Atlas memory limits & timeouts.
+    // We fetch raw logs and sort in-memory.
     // =========================================================================
-    const logQuery: any = {};
+    const logFilter: any = {};
     if (targetProductId) {
-      logQuery.product = targetProductId;
+      logFilter.product = targetProductId;
     }
 
-    // Fetch all stock logs sorted chronologically
-    const allLogs = await StockLog.find(logQuery)
-      .sort({ createdAt: 1, _id: 1 })
-      .lean();
+    const allLogs = await StockLog.find(logFilter).lean();
 
-    // Group logs by productId in memory
+    // Group logs by productId
     const logsByProduct = new Map<string, any[]>();
     for (const log of allLogs) {
       if (!log.product) continue;
@@ -139,7 +144,7 @@ async function reconcileStockHandler(req: NextRequest) {
       logsByProduct.get(pId)!.push(log);
     }
 
-    // Fetch all corresponding products in one bulk query
+    // Fetch only the products that actually have stock logs
     const productIdsToFetch = targetProductId
       ? [targetProductId]
       : Array.from(logsByProduct.keys());
@@ -153,29 +158,36 @@ async function reconcileStockHandler(req: NextRequest) {
       productMap.set(p._id.toString(), p);
     }
 
-    // Set null stock to 0 for products without logs
-    await Product.updateMany(
-      { $or: [{ stock: null }, { stock: { $exists: false } }] },
-      { $set: { stock: 0 } }
-    );
-
     // =========================================================================
-    // STEP 3: Validate and compute exact chronological ledger for each product
+    // STEP 3: Chronological Ledger Validation & Correction
+    // Validates each log sequentially:
+    //   expectedPreviousStock = runningStock
+    //   expectedResultingStock = Math.max(0, runningStock + change)
+    // If a log's recorded previousStock or resultingStock does not match,
+    // it is corrected. At the end, product.stock is set to final runningStock.
     // =========================================================================
     const logBulkOps: any[] = [];
     const productBulkOps: any[] = [];
-    const details: ReconcileResult[] = [];
+    const modifiedProducts: ReconcileResult[] = [];
     let totalLogsCorrected = 0;
     let totalProductsUpdated = 0;
 
-    for (const [pId, logs] of logsByProduct.entries()) {
+    for (const [pId, rawLogs] of logsByProduct.entries()) {
       const product = productMap.get(pId);
       if (!product) continue;
 
       const oldStock = Number(product.stock) || 0;
-      if (!logs || logs.length === 0) continue;
+      if (!rawLogs || rawLogs.length === 0) continue;
 
-      // Determine initial baseline before first log
+      // Sort logs deterministically in memory: createdAt ASC, then _id ASC
+      const logs = [...rawLogs].sort((a: any, b: any) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        return String(a._id).localeCompare(String(b._id));
+      });
+
+      // ── Determine Initial Stock Baseline before the first log ──
       const firstLog = logs[0];
       let initialStock = 0;
 
@@ -189,19 +201,22 @@ async function reconcileStockHandler(req: NextRequest) {
         firstLog.resultingStock !== null &&
         !isNaN(Number(firstLog.resultingStock));
 
-      const isInitialEntry =
+      const firstChange = Number(firstLog.change) || 0;
+
+      // Check if first log was an initial stock addition (e.g. +4 resulting in 4, or opening stock)
+      if (hasValidRes && firstChange > 0 && Number(firstLog.resultingStock) === firstChange) {
+        initialStock = 0;
+      } else if (
         typeof firstLog.description === "string" &&
         (firstLog.description.toLowerCase().includes("initial") ||
           firstLog.description.toLowerCase().includes("opening") ||
-          firstLog.description.toLowerCase().includes("bulk import") ||
-          (Number(firstLog.change) > 0 && !hasValidPrev));
-
-      if (isInitialEntry) {
+          firstLog.description.toLowerCase().includes("bulk import"))
+      ) {
         initialStock = 0;
       } else if (hasValidPrev) {
-        initialStock = Number(firstLog.previousStock);
-      } else if (hasValidRes && firstLog.change !== undefined) {
-        initialStock = Number(firstLog.resultingStock) - Number(firstLog.change);
+        initialStock = Math.max(0, Number(firstLog.previousStock));
+      } else if (hasValidRes) {
+        initialStock = Math.max(0, Number(firstLog.resultingStock) - firstChange);
       } else {
         const totalNetChange = logs.reduce(
           (sum, l) => sum + (Number(l.change) || 0),
@@ -210,11 +225,12 @@ async function reconcileStockHandler(req: NextRequest) {
         initialStock = Math.max(0, oldStock - totalNetChange);
       }
 
-      // Simulation pass: ensure stock never dropped below 0
+      // Simulation pass: ensure running stock never dipped below 0
       let simBalance = initialStock;
       let minBalance = simBalance;
       for (const log of logs) {
-        simBalance += Number(log.change) || 0;
+        const c = Number(log.change) || 0;
+        simBalance += c;
         if (simBalance < minBalance) {
           minBalance = simBalance;
         }
@@ -223,10 +239,10 @@ async function reconcileStockHandler(req: NextRequest) {
         initialStock += Math.abs(minBalance);
       }
 
-      // Reconstruct ledger pass
+      // ── Reconstruct and Validate Full Ledger ──
       let runningStock = initialStock;
       let productLogsCorrected = 0;
-      const correctedLogsPreview: any[] = [];
+      const correctedLogsPreview: CorrectedLogPreview[] = [];
 
       for (const log of logs) {
         const prev = runningStock;
@@ -236,9 +252,11 @@ async function reconcileStockHandler(req: NextRequest) {
         const oldPrev = log.previousStock;
         const oldRes = log.resultingStock;
 
-        const needsUpdate = oldPrev !== prev || oldRes !== next;
+        // Check for mismatch: log needs update if previousStock or resultingStock is corrupted/inconsistent
+        const prevMismatch = oldPrev === undefined || oldPrev === null || Number(oldPrev) !== prev;
+        const resMismatch = oldRes === undefined || oldRes === null || Number(oldRes) !== next;
 
-        if (needsUpdate) {
+        if (prevMismatch || resMismatch) {
           logBulkOps.push({
             updateOne: {
               filter: { _id: log._id },
@@ -248,17 +266,16 @@ async function reconcileStockHandler(req: NextRequest) {
           productLogsCorrected++;
           totalLogsCorrected++;
 
-          if (correctedLogsPreview.length < 5) {
-            correctedLogsPreview.push({
-              logId: log._id.toString(),
-              description: log.description,
-              change,
-              oldPrevious: oldPrev,
-              newPrevious: prev,
-              oldResulting: oldRes,
-              newResulting: next,
-            });
-          }
+          correctedLogsPreview.push({
+            logId: log._id.toString(),
+            description: log.description,
+            change,
+            oldPrevious: oldPrev,
+            newPrevious: prev,
+            oldResulting: oldRes,
+            newResulting: next,
+            date: log.createdAt ? new Date(log.createdAt).toISOString() : undefined,
+          });
         }
 
         runningStock = next;
@@ -279,7 +296,7 @@ async function reconcileStockHandler(req: NextRequest) {
       }
 
       if (stockChanged || productLogsCorrected > 0) {
-        details.push({
+        modifiedProducts.push({
           productId: pId,
           productName: product.name,
           oldStock,
@@ -294,6 +311,8 @@ async function reconcileStockHandler(req: NextRequest) {
 
     // =========================================================================
     // STEP 4: Atomically apply updates via bulkWrite
+    // Only operations with validated discrepancies are executed.
+    // If no discrepancies found, zero database writes are made.
     // =========================================================================
     const writePromises: Promise<any>[] = [];
     if (logBulkOps.length > 0) {
@@ -309,11 +328,14 @@ async function reconcileStockHandler(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Stock and price reconciliation completed successfully.",
-      totalProductsWithLogs: logsByProduct.size,
-      productsUpdatedCount: totalProductsUpdated,
-      stockLogsCorrectedCount: totalLogsCorrected,
-      pricesUpdatedCount,
-      modifiedProducts: details,
+      summary: {
+        totalProductsWithLogs: logsByProduct.size,
+        productsUpdatedCount: totalProductsUpdated,
+        stockLogsExamined: allLogs.length,
+        stockLogsCorrectedCount: totalLogsCorrected,
+        pricesUpdatedCount,
+      },
+      modifiedProducts,
     });
   } catch (error: any) {
     console.error("Stock reconciliation error:", error);
