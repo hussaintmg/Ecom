@@ -4,9 +4,10 @@ import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import Invoice from "@/models/Invoice";
 import CreditSale from "@/models/CreditSale";
+import "@/models/User";
+import "@/models/Category";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 interface ReconcileResult {
   productId: string;
@@ -16,6 +17,15 @@ interface ReconcileResult {
   stockChanged: boolean;
   totalLogs: number;
   logsCorrected: number;
+  correctedLogsPreview?: {
+    logId: string;
+    description: string;
+    change: number;
+    oldPrevious: number | undefined;
+    newPrevious: number;
+    oldResulting: number | undefined;
+    newResulting: number;
+  }[];
 }
 
 async function reconcileStockHandler(req: NextRequest) {
@@ -23,19 +33,31 @@ async function reconcileStockHandler(req: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
-    const onlyPrices =
-      searchParams.get("only") === "prices" ||
-      searchParams.get("action") === "prices";
+    let targetProductId: string | null = searchParams.get("productId");
 
-    // 1. Backfill product prices from latest Invoices and CreditSales FIRST
+    if (!targetProductId && req.method === "POST") {
+      try {
+        const body = await req.json();
+        if (body && body.productId) {
+          targetProductId = body.productId;
+        }
+      } catch {
+        // Body was empty or not JSON, proceed with all
+      }
+    }
+
+    // =========================================================================
+    // STEP 1: Fast in-memory price backfill from Invoices and CreditSales
+    // =========================================================================
     let pricesUpdatedCount = 0;
     try {
-      const invoices = await Invoice.find({ "products.0": { $exists: true } })
-        .select("products")
+      const invoices = await Invoice.find({})
+        .select("products product quantity salePrice createdAt")
         .sort({ createdAt: 1 })
         .lean();
-      const creditSales = await CreditSale.find({ "products.0": { $exists: true } })
-        .select("products")
+
+      const creditSales = await CreditSale.find({})
+        .select("products createdAt")
         .sort({ createdAt: 1 })
         .lean();
 
@@ -44,15 +66,22 @@ async function reconcileStockHandler(req: NextRequest) {
       for (const inv of invoices) {
         if (Array.isArray(inv.products)) {
           for (const item of inv.products) {
-            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const pId = item?.product?._id?.toString() || item?.product?.toString();
             const qty = Number(item.quantity) || 1;
             const saleP = Number(item.salePrice) || 0;
-            if (rawProdId && qty > 0 && saleP > 0) {
+            if (pId && qty > 0 && saleP > 0) {
               const unitP = Math.round(saleP / qty);
-              if (unitP > 0) {
-                priceMap.set(rawProdId.toString(), unitP);
-              }
+              if (unitP > 0) priceMap.set(pId, unitP);
             }
+          }
+        }
+        if (inv.product) {
+          const pId = (inv.product as any)?._id?.toString() || inv.product.toString();
+          const qty = Number(inv.quantity) || 1;
+          const saleP = Number(inv.salePrice) || 0;
+          if (pId && qty > 0 && saleP > 0) {
+            const unitP = Math.round(saleP / qty);
+            if (unitP > 0) priceMap.set(pId, unitP);
           }
         }
       }
@@ -60,14 +89,12 @@ async function reconcileStockHandler(req: NextRequest) {
       for (const cs of creditSales) {
         if (Array.isArray(cs.products)) {
           for (const item of cs.products) {
-            const rawProdId = (item as any)?.product?._id || (item as any)?.product;
+            const pId = item?.product?._id?.toString() || item?.product?.toString();
             const qty = Number(item.quantity) || 1;
             const saleP = Number(item.salePrice) || 0;
-            if (rawProdId && qty > 0 && saleP > 0) {
+            if (pId && qty > 0 && saleP > 0) {
               const unitP = Math.round(saleP / qty);
-              if (unitP > 0) {
-                priceMap.set(rawProdId.toString(), unitP);
-              }
+              if (unitP > 0) priceMap.set(pId, unitP);
             }
           }
         }
@@ -75,7 +102,7 @@ async function reconcileStockHandler(req: NextRequest) {
 
       const priceBulkOps = Array.from(priceMap.entries()).map(([pId, unitP]) => ({
         updateOne: {
-          filter: { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
+          filter: { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }, { price: null }] },
           update: { $set: { price: unitP } },
         },
       }));
@@ -88,82 +115,67 @@ async function reconcileStockHandler(req: NextRequest) {
       console.error("Error backfilling prices:", priceErr);
     }
 
-    if (onlyPrices) {
-      return NextResponse.json({
-        success: true,
-        message: "Product prices backfilled successfully from invoices and credit sales.",
-        pricesUpdatedCount,
-      });
+    // =========================================================================
+    // STEP 2: Fetch Stock Logs and Products in 2 bulk queries
+    // =========================================================================
+    const logQuery: any = {};
+    if (targetProductId) {
+      logQuery.product = targetProductId;
     }
 
-    // 2. Read optional productId from URL params or POST JSON body
-    let targetProductId: string | null = null;
-    if (searchParams.get("productId")) {
-      targetProductId = searchParams.get("productId");
-    } else if (req.method === "POST") {
-      try {
-        const body = await req.json();
-        if (body && body.productId) {
-          targetProductId = body.productId;
-        }
-      } catch {
-        // Body was empty or not JSON, proceed
+    // Fetch all stock logs sorted chronologically
+    const allLogs = await StockLog.find(logQuery)
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
+
+    // Group logs by productId in memory
+    const logsByProduct = new Map<string, any[]>();
+    for (const log of allLogs) {
+      if (!log.product) continue;
+      const pId = log.product.toString();
+      if (!logsByProduct.has(pId)) {
+        logsByProduct.set(pId, []);
       }
+      logsByProduct.get(pId)!.push(log);
     }
 
-    // Ensure all products with null/undefined stock are set to 0 in one bulk query
+    // Fetch all corresponding products in one bulk query
+    const productIdsToFetch = targetProductId
+      ? [targetProductId]
+      : Array.from(logsByProduct.keys());
+
+    const products = await Product.find({ _id: { $in: productIdsToFetch } })
+      .select("_id name stock")
+      .lean();
+
+    const productMap = new Map<string, any>();
+    for (const p of products) {
+      productMap.set(p._id.toString(), p);
+    }
+
+    // Set null stock to 0 for products without logs
     await Product.updateMany(
       { $or: [{ stock: null }, { stock: { $exists: false } }] },
       { $set: { stock: 0 } }
     );
 
-    // 3. Fetch ONLY products that need ledger reconciliation
-    const productQuery: any = {};
-    if (targetProductId) {
-      productQuery._id = targetProductId;
-    } else {
-      // High-performance optimization: only query products that have recorded stock logs
-      const productIdsWithLogs = await StockLog.distinct("product");
-      productQuery._id = { $in: productIdsWithLogs };
-    }
-
-    const products = await Product.find(productQuery).select("_id name stock").lean();
-
-    if (!products || products.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: targetProductId
-          ? `Product not found with ID ${targetProductId}`
-          : "No products found to reconcile",
-        totalProductsChecked: 0,
-        productsUpdatedCount: 0,
-        stockLogsCorrectedCount: 0,
-        pricesUpdatedCount,
-        details: [],
-      });
-    }
-
-    let totalProductsUpdated = 0;
-    let totalLogsCorrected = 0;
-    const details: ReconcileResult[] = [];
+    // =========================================================================
+    // STEP 3: Validate and compute exact chronological ledger for each product
+    // =========================================================================
     const logBulkOps: any[] = [];
     const productBulkOps: any[] = [];
+    const details: ReconcileResult[] = [];
+    let totalLogsCorrected = 0;
+    let totalProductsUpdated = 0;
 
-    // 4. Process each product chronologically in memory
-    for (const product of products) {
-      const pId = product._id;
-      const logs = await StockLog.find({ product: pId }).sort({
-        createdAt: 1,
-        _id: 1,
-      });
+    for (const [pId, logs] of logsByProduct.entries()) {
+      const product = productMap.get(pId);
+      if (!product) continue;
 
       const oldStock = Number(product.stock) || 0;
+      if (!logs || logs.length === 0) continue;
 
-      if (!logs || logs.length === 0) {
-        continue;
-      }
-
-      // Reconstruct the chronological ledger
+      // Determine initial baseline before first log
       const firstLog = logs[0];
       let initialStock = 0;
 
@@ -181,7 +193,8 @@ async function reconcileStockHandler(req: NextRequest) {
         typeof firstLog.description === "string" &&
         (firstLog.description.toLowerCase().includes("initial") ||
           firstLog.description.toLowerCase().includes("opening") ||
-          firstLog.description.toLowerCase().includes("bulk import"));
+          firstLog.description.toLowerCase().includes("bulk import") ||
+          (Number(firstLog.change) > 0 && !hasValidPrev));
 
       if (isInitialEntry) {
         initialStock = 0;
@@ -197,7 +210,7 @@ async function reconcileStockHandler(req: NextRequest) {
         initialStock = Math.max(0, oldStock - totalNetChange);
       }
 
-      // Simulation pass
+      // Simulation pass: ensure stock never dropped below 0
       let simBalance = initialStock;
       let minBalance = simBalance;
       for (const log of logs) {
@@ -206,22 +219,24 @@ async function reconcileStockHandler(req: NextRequest) {
           minBalance = simBalance;
         }
       }
-
       if (minBalance < 0) {
         initialStock += Math.abs(minBalance);
       }
 
-      // Execution pass: calibrate previousStock & resultingStock
+      // Reconstruct ledger pass
       let runningStock = initialStock;
-      let logsUpdatedForProduct = 0;
+      let productLogsCorrected = 0;
+      const correctedLogsPreview: any[] = [];
 
       for (const log of logs) {
         const prev = runningStock;
         const change = Number(log.change) || 0;
-        const next = prev + change;
+        const next = Math.max(0, prev + change);
 
-        const needsUpdate =
-          log.previousStock !== prev || log.resultingStock !== next;
+        const oldPrev = log.previousStock;
+        const oldRes = log.resultingStock;
+
+        const needsUpdate = oldPrev !== prev || oldRes !== next;
 
         if (needsUpdate) {
           logBulkOps.push({
@@ -230,20 +245,32 @@ async function reconcileStockHandler(req: NextRequest) {
               update: { $set: { previousStock: prev, resultingStock: next } },
             },
           });
-          logsUpdatedForProduct++;
+          productLogsCorrected++;
           totalLogsCorrected++;
+
+          if (correctedLogsPreview.length < 5) {
+            correctedLogsPreview.push({
+              logId: log._id.toString(),
+              description: log.description,
+              change,
+              oldPrevious: oldPrev,
+              newPrevious: prev,
+              oldResulting: oldRes,
+              newResulting: next,
+            });
+          }
         }
 
         runningStock = next;
       }
 
       const finalStock = Math.max(0, runningStock);
-
       let stockChanged = false;
-      if (product.stock !== finalStock) {
+
+      if (oldStock !== finalStock) {
         productBulkOps.push({
           updateOne: {
-            filter: { _id: pId },
+            filter: { _id: product._id },
             update: { $set: { stock: finalStock } },
           },
         });
@@ -251,20 +278,23 @@ async function reconcileStockHandler(req: NextRequest) {
         totalProductsUpdated++;
       }
 
-      if (stockChanged || logsUpdatedForProduct > 0) {
+      if (stockChanged || productLogsCorrected > 0) {
         details.push({
-          productId: pId.toString(),
+          productId: pId,
           productName: product.name,
           oldStock,
           newStock: finalStock,
           stockChanged,
           totalLogs: logs.length,
-          logsCorrected: logsUpdatedForProduct,
+          logsCorrected: productLogsCorrected,
+          correctedLogsPreview,
         });
       }
     }
 
-    // Execute bulk updates in parallel
+    // =========================================================================
+    // STEP 4: Atomically apply updates via bulkWrite
+    // =========================================================================
     const writePromises: Promise<any>[] = [];
     if (logBulkOps.length > 0) {
       writePromises.push(StockLog.bulkWrite(logBulkOps, { ordered: false }));
@@ -279,7 +309,7 @@ async function reconcileStockHandler(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Stock and price reconciliation completed successfully.",
-      totalProductsChecked: products.length,
+      totalProductsWithLogs: logsByProduct.size,
       productsUpdatedCount: totalProductsUpdated,
       stockLogsCorrectedCount: totalLogsCorrected,
       pricesUpdatedCount,
