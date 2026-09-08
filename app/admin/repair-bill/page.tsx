@@ -94,8 +94,12 @@ const SellInner = () => {
     const product = products.find((p) => p._id === productId);
     setQuantity("1");
     if (product) {
-      setUnitPrice(product.price.toString());
-      setSalePrice(product.price.toString());
+      const basePrice =
+        product.price !== undefined && product.price !== null && !isNaN(Number(product.price))
+          ? Number(product.price)
+          : 0;
+      setUnitPrice(basePrice > 0 ? basePrice.toString() : "");
+      setSalePrice(basePrice > 0 ? basePrice.toString() : "");
     } else {
       setUnitPrice("");
       setSalePrice("");

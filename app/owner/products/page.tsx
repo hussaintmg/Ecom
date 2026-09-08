@@ -7,6 +7,8 @@ import { useProducts } from "@/context/ProductContext";
 import { useCategories } from "@/context/CategoryContext";
 import ProductForm from "@/components/dashboard/ProductForm";
 import Button from "@/components/ui/Button";
+import BarcodePrintModal from "@/components/barcode/BarcodePrintModal";
+import SingleBarcodeModal from "@/components/barcode/SingleBarcodeModal";
 import {
   Plus,
   Trash2,
@@ -18,6 +20,9 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ScanBarcode,
+  Printer,
+  Download,
 } from "lucide-react";
 
 const Skeleton = () => (
@@ -44,6 +49,7 @@ const StockBadge = ({ stock }: { stock: number }) => (
 
 const ProductsInner = () => {
   const router = useRouter();
+  const isBarcodeEnabled = process.env.NEXT_PUBLIC_ENABLE_BARCODE === "true";
   const {
     products,
     totalProducts,
@@ -58,11 +64,16 @@ const ProductsInner = () => {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    stockFilter,
+    setStockFilter,
   } = useProducts();
 
   const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [loadingAllPages, setLoadingAllPages] = useState(false);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [singleBarcodeProduct, setSingleBarcodeProduct] = useState<any | null>(null);
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   const isSelected = (id: string) => selectedProducts.some((p) => p._id === id);
 
@@ -105,6 +116,7 @@ const ProductsInner = () => {
         queryParams.append("limit", "10000");
         if (localSearch) queryParams.append("search", localSearch);
         if (localCategory && localCategory !== "All") queryParams.append("category", localCategory);
+        if (localStock && localStock !== "All") queryParams.append("stock", localStock);
         
         const res = await fetch(`/api/products?${queryParams}`);
         const data = await res.json();
@@ -136,6 +148,33 @@ const ProductsInner = () => {
     }
     setBulkDeleting(false);
   };
+
+  const handleBulkDownloadZip = async () => {
+    if (selectedProducts.length === 0) return;
+    try {
+      setDownloadingZip(true);
+      const productIds = selectedProducts.map((p) => p._id);
+      const res = await fetch("/api/products/barcodes/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds }),
+      });
+      if (!res.ok) throw new Error("Failed to download barcodes ZIP");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `barcodes_${selectedProducts.length}_products.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || "Error downloading barcodes ZIP");
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
   const { categories, fetchCategories } = useCategories();
 
   const [showForm, setShowForm] = useState(false);
@@ -145,8 +184,10 @@ const ProductsInner = () => {
   const [pageInput, setPageInput] = useState("");
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [localCategory, setLocalCategory] = useState(selectedCategory);
+  const [localStock, setLocalStock] = useState(stockFilter || "All");
   const [prevSearch, setPrevSearch] = useState(searchQuery);
   const [prevCategory, setPrevCategory] = useState(selectedCategory);
+  const [prevStock, setPrevStock] = useState(stockFilter || "All");
 
   // Fetch categories on mount
   useEffect(() => {
@@ -156,28 +197,30 @@ const ProductsInner = () => {
   // Fetch products when dependencies change with proper debouncing
   useEffect(() => {
     const timer = setTimeout(() => {
-      // Only fetch if search or category actually changed
+      // Only fetch if search, category or stock actually changed
       const searchChanged = localSearch !== prevSearch;
       const categoryChanged = localCategory !== prevCategory;
+      const stockChanged = localStock !== prevStock;
       
-      if (searchChanged || categoryChanged) {
+      if (searchChanged || categoryChanged || stockChanged) {
         setPrevSearch(localSearch);
         setPrevCategory(localCategory);
-        fetchProducts(1, localSearch, localCategory);
+        setPrevStock(localStock);
+        fetchProducts(1, localSearch, localCategory, localStock);
       }
-    }, 1000);
+    }, localSearch !== prevSearch ? 400 : 0);
 
     return () => clearTimeout(timer);
-  }, [localSearch, localCategory, fetchProducts]);
+  }, [localSearch, localCategory, localStock, prevSearch, prevCategory, prevStock, fetchProducts]);
 
   // Handle page changes
   useEffect(() => {
-    fetchProducts(currentPage, prevSearch, prevCategory);
+    fetchProducts(currentPage, prevSearch, prevCategory, prevStock);
   }, [currentPage, fetchProducts]);
 
   // Initial fetch
   useEffect(() => {
-    fetchProducts(1, "", "All");
+    fetchProducts(1, "", "All", "All");
   }, [fetchProducts]);
 
   const handleDelete = async (id: string) => {
@@ -189,7 +232,7 @@ const ProductsInner = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchProducts(currentPage, localSearch, localCategory);
+    await fetchProducts(currentPage, localSearch, localCategory, localStock);
     setRefreshing(false);
   };
 
@@ -200,6 +243,13 @@ const ProductsInner = () => {
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setLocalCategory(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleStockFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setLocalStock(val);
+    setStockFilter(val);
     setCurrentPage(1);
   };
 
@@ -300,6 +350,42 @@ const ProductsInner = () => {
               </option>
             ))}
           </select>
+          <select
+            value={localStock}
+            onChange={handleStockFilterChange}
+            className="px-4 py-2 text-sm rounded-xl border bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer min-w-[140px]"
+          >
+            <option value="All">All Stock</option>
+            <option value="InStock">In Stock</option>
+            <option value="OutOfStock">Out of Stock</option>
+          </select>
+        </div>
+
+        {/* Quick Filter Pills */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground font-semibold mr-1">Stock Status:</span>
+          {[
+            { label: "All Stock", value: "All" },
+            { label: "In Stock", value: "InStock" },
+            { label: "Out of Stock", value: "OutOfStock" },
+          ].map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => {
+                setLocalStock(f.value);
+                setStockFilter(f.value);
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1 text-xs font-semibold rounded-full border transition-all ${
+                localStock === f.value
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted/50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -326,9 +412,51 @@ const ProductsInner = () => {
             </Button>
           </div>
           {selectedProducts.length > 0 && (
-            <span className="text-xs font-bold text-muted-foreground bg-card px-2.5 py-1 rounded-lg border">
-              Selected: {selectedProducts.length}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-muted-foreground bg-card px-2.5 py-1 rounded-lg border">
+                Selected: {selectedProducts.length}
+              </span>
+              {isBarcodeEnabled && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkDownloadZip}
+                    disabled={downloadingZip}
+                    className="text-xs font-semibold gap-1.5"
+                  >
+                    {downloadingZip ? (
+                      <RefreshCw size={12} className="animate-spin" />
+                    ) : (
+                      <Download size={12} />
+                    )}
+                    Download Barcodes (ZIP)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPrintModalOpen(true)}
+                    className="text-xs font-semibold gap-1.5"
+                  >
+                    <Printer size={12} /> Print Barcodes
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="text-xs font-semibold gap-1.5"
+              >
+                {bulkDeleting ? (
+                  <RefreshCw size={12} className="animate-spin" />
+                ) : (
+                  <Trash2 size={12} />
+                )}
+                Delete ({selectedProducts.length})
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -336,7 +464,13 @@ const ProductsInner = () => {
       {totalProducts === 0 && !loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card border-dashed">
           <Package size={40} className="opacity-30" />
-          <p className="text-sm font-medium">No products found.</p>
+          <p className="text-sm font-medium">
+            {localStock === "OutOfStock"
+              ? "No out-of-stock products found."
+              : localStock === "InStock"
+              ? "No in-stock products found."
+              : "No products found."}
+          </p>
           <Button size="sm" onClick={() => setShowForm(true)} className="gap-2">
             <Plus size={14} /> Add Your First Product
           </Button>
@@ -391,6 +525,16 @@ const ProductsInner = () => {
                     </div>
                   </div>
                 <div className="flex gap-2 mt-4">
+                  {isBarcodeEnabled && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 gap-1 text-xs"
+                      onClick={() => setSingleBarcodeProduct(p)}
+                    >
+                      <ScanBarcode size={12} /> Barcode
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -455,6 +599,7 @@ const ProductsInner = () => {
                   <th className="px-6 py-4">Image</th>
                   <th className="px-6 py-4">Name</th>
                   <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">Price</th>
                   <th className="px-6 py-4">Stock</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
@@ -498,11 +643,24 @@ const ProductsInner = () => {
                     <td className="px-6 py-4 text-muted-foreground">
                       {getCategoryName(p) || "—"}
                     </td>
+                    <td className="px-6 py-4 font-bold text-emerald-600">
+                      Rs. {(p.price ?? 0).toLocaleString()}
+                    </td>
                     <td className="px-6 py-4">
                       <StockBadge stock={p.stock} />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
+                        {isBarcodeEnabled && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            onClick={() => setSingleBarcodeProduct(p)}
+                          >
+                            <ScanBarcode size={12} /> Barcode
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -683,6 +841,21 @@ const ProductsInner = () => {
             />
           </div>
         </div>
+      )}
+      {/* Barcode Print / Download Modals */}
+      {isBarcodeEnabled && (
+        <>
+          <BarcodePrintModal
+            isOpen={printModalOpen}
+            onClose={() => setPrintModalOpen(false)}
+            products={selectedProducts}
+          />
+          <SingleBarcodeModal
+            isOpen={!!singleBarcodeProduct}
+            onClose={() => setSingleBarcodeProduct(null)}
+            product={singleBarcodeProduct}
+          />
+        </>
       )}
     </div>
   );

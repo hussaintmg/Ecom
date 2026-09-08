@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     // Products
     // =========================
     const products = await Product.find(query)
-      .select("name images description stock category price")
+      .select("name images description stock category price barcode")
       .populate("category")
       .sort(sortOption)
       .lean()

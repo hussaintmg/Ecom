@@ -12,12 +12,15 @@ const ProductSchema = new Schema(
     ],
     category: { type: Schema.Types.ObjectId, ref: "Category", required: true },
     stock: { type: Number, required: true, default: 0 },
+    price: { type: Number, required: true, default: 0 },
+    barcode: { type: String, trim: true },
     attributes: { type: Map, of: String },
   },
   { timestamps: true }
 );
 
 ProductSchema.index({ name: "text", description: "text" });
+ProductSchema.index({ barcode: 1 });
 
 delete mongoose.models.Product;
 

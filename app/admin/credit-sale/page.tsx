@@ -105,7 +105,7 @@ const CreditSaleInner = () => {
     setSelectedProductId(productId);
     setEditingIndex(null);
     const prod = products.find((p) => p._id === productId);
-    const basePrice = prod ? Number(prod.price) : 0;
+    const basePrice = prod && prod.price !== undefined && prod.price !== null && !isNaN(Number(prod.price)) ? Number(prod.price) : 0;
     setUnitPrice(basePrice);
     setQuantity("1");
     setSalePrice(basePrice > 0 ? basePrice.toString() : "");

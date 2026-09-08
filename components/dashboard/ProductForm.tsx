@@ -25,6 +25,8 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
     description: "",
     category: "",
     stock: "",
+    price: "",
+    barcode: "",
   });
 
   const [generateAllCategories, setGenerateAllCategories] = useState(false);
@@ -45,6 +47,8 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
         description: initialData.description || "",
         category: initialData.category?._id || initialData.category || "",
         stock: initialData.stock?.toString() || "",
+        price: initialData.price !== undefined && initialData.price !== null ? initialData.price.toString() : "",
+        barcode: initialData.barcode || "",
       });
       setExistingImages(initialData.images || []);
       setGenerateAllCategories(initialData.generateAllCategories || false);
@@ -118,6 +122,8 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
       description: formData.description,
       category: formData.category,
       stock: Number(formData.stock),
+      price: Number(formData.price) || 0,
+      barcode: formData.barcode ? formData.barcode.trim() : undefined,
       images: [...existingImages, ...uploadedImages],
       generateAllCategories: generateAllCategories, // Send to backend
     };
@@ -190,7 +196,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
         />
       </label>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Category *
@@ -210,6 +216,23 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
               </option>
             ))}
           </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Price (PKR) *
+          </span>
+          <input
+            type="number"
+            className={inputClass}
+            value={formData.price}
+            onChange={(e) =>
+              setFormData({ ...formData, price: e.target.value })
+            }
+            required
+            min={0}
+            step="any"
+            placeholder="e.g. 2500"
+          />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -238,6 +261,23 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
           ) : null}
         </label>
       </div>
+
+      {/* Barcode / SKU Field */}
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+          <span>Barcode / SKU (Optional)</span>
+          <span className="text-[10px] lowercase font-normal opacity-70">Leave blank to use auto product ID</span>
+        </span>
+        <input
+          type="text"
+          className={inputClass}
+          value={formData.barcode}
+          onChange={(e) =>
+            setFormData({ ...formData, barcode: e.target.value })
+          }
+          placeholder="e.g. 890123456789 or custom SKU"
+        />
+      </label>
 
       {/* Generate All Categories Toggle */}
       <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border">

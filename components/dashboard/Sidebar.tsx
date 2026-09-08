@@ -120,7 +120,13 @@ const Sidebar = ({ navItems, role, isOpen = true, onClose }: SidebarProps) => {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
 
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => {
+            const isBarcodeEnabled = process.env.NEXT_PUBLIC_ENABLE_BARCODE === "true";
+            if (item.url?.includes("barcode") && !isBarcodeEnabled) return false;
+            return true;
+          })
+          .map((item) => {
           const Icon = item.icon;
           const hasDropdown = item.dropdown && item.dropdown.length > 0;
           const isExpanded = expandedItems.includes(item.name);

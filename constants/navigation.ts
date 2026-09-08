@@ -12,6 +12,7 @@ import {
   UserCheck,
   ReceiptText, // invoice icon
   ShoppingCart, // sale icon
+  ScanBarcode, // barcode scanner icon
 } from "lucide-react";
 
 export interface NavItem {
@@ -21,10 +22,15 @@ export interface NavItem {
   dropdown?: { name: string; url: string }[];
 }
 
+const isBarcodeEnabled = process.env.NEXT_PUBLIC_ENABLE_BARCODE === "true";
+
 export const ADMIN_NAV: NavItem[] = [
   { name: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { name: "Products", url: "/admin/products", icon: Package },
   { name: "Inventory", url: "/admin/inventory", icon: Grid },
+  ...(isBarcodeEnabled
+    ? [{ name: "Barcode Scan", url: "/admin/barcode-scan", icon: ScanBarcode }]
+    : []),
   { name: "Manual Sell", url: "/admin/sell", icon: ShoppingCart },
   { name: "Credit Sale", url: "/admin/credit-sale", icon: CreditCard },
   { name: "Credit Records", url: "/admin/credit-sales", icon: CreditCard },
@@ -47,6 +53,9 @@ export const OWNER_NAV: NavItem[] = [
   { name: "Products", url: "/owner/products", icon: Package },
   { name: "Categories", url: "/owner/categories", icon: Grid },
   { name: "Inventory", url: "/owner/inventory", icon: Grid },
+  ...(isBarcodeEnabled
+    ? [{ name: "Barcode Scan", url: "/owner/barcode-scan", icon: ScanBarcode }]
+    : []),
   { name: "Manual Sell", url: "/owner/sell", icon: ShoppingCart },
   { name: "Credit Sale", url: "/owner/credit-sale", icon: CreditCard },
   { name: "Credit Records", url: "/owner/credit-sales", icon: CreditCard },
