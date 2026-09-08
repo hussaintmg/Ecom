@@ -40,24 +40,6 @@ async function reconcileStockHandler(req: NextRequest) {
     const action = searchParams.get("action");
     let targetProductId: string | null = searchParams.get("productId");
 
-    if (action === "diagnostic") {
-      const [totalStockLogs, totalInvoices, totalCreditSales, totalProducts] = await Promise.all([
-        StockLog.estimatedDocumentCount(),
-        Invoice.estimatedDocumentCount(),
-        CreditSale.estimatedDocumentCount(),
-        Product.estimatedDocumentCount(),
-      ]);
-      return NextResponse.json({
-        success: true,
-        diagnostic: {
-          totalProducts,
-          totalStockLogs,
-          totalInvoices,
-          totalCreditSales,
-        },
-      });
-    }
-
     if (!targetProductId && req.method === "POST") {
       try {
         const body = await req.json();
@@ -65,131 +47,96 @@ async function reconcileStockHandler(req: NextRequest) {
           targetProductId = body.productId;
         }
       } catch {
-        // Empty or non-JSON body, proceed with all products
+        // Empty or non-JSON body
       }
     }
 
     // =========================================================================
-    // STEP 1: Fast in-memory price backfill from Invoices and CreditSales
-    // Only updates products whose price is currently 0, missing, or null.
+    // STEP 1: Fast targeted discovery of products with activity
+    // To avoid full table scans across 15,000+ products (which cause serverless timeouts),
+    // we query Invoices (184 docs) and CreditSales (28 docs) where sales occur.
     // =========================================================================
-    let pricesUpdatedCount = 0;
-    try {
-      const invoices = await Invoice.find({})
-        .select("products product quantity salePrice")
-        .lean();
+    const [invoices, creditSales] = await Promise.all([
+      Invoice.find({}).select("products.product product quantity salePrice").lean(),
+      CreditSale.find({}).select("products.product quantity salePrice").lean(),
+    ]);
 
-      const creditSales = await CreditSale.find({})
-        .select("products")
-        .lean();
+    const activeProductIds = new Set<string>();
+    const priceMap = new Map<string, number>();
 
-      const priceMap = new Map<string, number>();
-
-      for (const inv of invoices) {
-        if (Array.isArray(inv.products)) {
-          for (const item of inv.products) {
-            const pId = item?.product?._id?.toString() || item?.product?.toString();
-            const qty = Number(item.quantity) || 1;
-            const saleP = Number(item.salePrice) || 0;
-            if (pId && qty > 0 && saleP > 0) {
+    for (const inv of invoices) {
+      if (Array.isArray(inv.products)) {
+        for (const item of inv.products) {
+          const pId = item?.product?._id?.toString() || item?.product?.toString();
+          const qty = Number(item.quantity) || 1;
+          const saleP = Number(item.salePrice) || 0;
+          if (pId) {
+            activeProductIds.add(pId);
+            if (qty > 0 && saleP > 0) {
               const unitP = Math.round(saleP / qty);
               if (unitP > 0) priceMap.set(pId, unitP);
             }
           }
         }
-        if (inv.product) {
-          const pId = (inv.product as any)?._id?.toString() || inv.product.toString();
-          const qty = Number(inv.quantity) || 1;
-          const saleP = Number(inv.salePrice) || 0;
-          if (pId && qty > 0 && saleP > 0) {
+      }
+      if (inv.product) {
+        const pId = (inv.product as any)?._id?.toString() || inv.product.toString();
+        const qty = Number(inv.quantity) || 1;
+        const saleP = Number(inv.salePrice) || 0;
+        if (pId) {
+          activeProductIds.add(pId);
+          if (qty > 0 && saleP > 0) {
             const unitP = Math.round(saleP / qty);
             if (unitP > 0) priceMap.set(pId, unitP);
           }
         }
       }
+    }
 
-      for (const cs of creditSales) {
-        if (Array.isArray(cs.products)) {
-          for (const item of cs.products) {
-            const pId = item?.product?._id?.toString() || item?.product?.toString();
-            const qty = Number(item.quantity) || 1;
-            const saleP = Number(item.salePrice) || 0;
-            if (pId && qty > 0 && saleP > 0) {
+    for (const cs of creditSales) {
+      if (Array.isArray(cs.products)) {
+        for (const item of cs.products) {
+          const pId = item?.product?._id?.toString() || item?.product?.toString();
+          const qty = Number(item.quantity) || 1;
+          const saleP = Number(item.salePrice) || 0;
+          if (pId) {
+            activeProductIds.add(pId);
+            if (qty > 0 && saleP > 0) {
               const unitP = Math.round(saleP / qty);
               if (unitP > 0) priceMap.set(pId, unitP);
             }
           }
         }
       }
+    }
 
-      const priceBulkOps = Array.from(priceMap.entries()).map(([pId, unitP]) => ({
-        updateOne: {
-          filter: {
-            _id: pId,
-            $or: [{ price: 0 }, { price: { $exists: false } }, { price: null }],
-          },
-          update: { $set: { price: unitP } },
+    if (action === "diagnostic") {
+      return NextResponse.json({
+        success: true,
+        diagnostic: {
+          totalInvoices: invoices.length,
+          totalCreditSales: creditSales.length,
+          uniqueProductsWithSales: activeProductIds.size,
+          pricesToBackfill: priceMap.size,
         },
-      }));
-
-      if (priceBulkOps.length > 0) {
-        const bulkRes = await Product.bulkWrite(priceBulkOps, { ordered: false });
-        pricesUpdatedCount = bulkRes.modifiedCount || 0;
-      }
-    } catch (priceErr) {
-      console.error("Price backfill non-fatal error:", priceErr);
+      });
     }
 
+    const targetProductIds = targetProductId
+      ? [targetProductId]
+      : Array.from(activeProductIds);
+
     // =========================================================================
-    // STEP 2: Discover Target Products
-    // Because the product collection contains 15,000+ items, scanning all of them
-    // or running unindexed distinct() on StockLog triggers Vercel timeouts.
-    // Instead, we target all products with physical stock (> 0) plus all products
-    // ever involved in an Invoice or CreditSale.
+    // STEP 2: Fetch Stock Logs and Products using indexed primary/foreign keys
     // =========================================================================
-    let targetProductIds: string[] = [];
-
-    if (targetProductId) {
-      targetProductIds = [targetProductId];
-    } else {
-      const [stockProducts, invoices, creditSales] = await Promise.all([
-        Product.find({ stock: { $gt: 0 } }).select("_id").lean(),
-        Invoice.find({}).select("products.product product").lean(),
-        CreditSale.find({}).select("products.product").lean(),
-      ]);
-
-      const idSet = new Set<string>();
-      for (const p of stockProducts) {
-        if (p?._id) idSet.add(p._id.toString());
-      }
-      for (const inv of invoices) {
-        if (Array.isArray(inv.products)) {
-          for (const item of inv.products) {
-            const id = item?.product?._id?.toString() || item?.product?.toString();
-            if (id) idSet.add(id);
-          }
-        }
-        if (inv.product) {
-          const id = (inv.product as any)?._id?.toString() || inv.product.toString();
-          if (id) idSet.add(id);
-        }
-      }
-      for (const cs of creditSales) {
-        if (Array.isArray(cs.products)) {
-          for (const item of cs.products) {
-            const id = item?.product?._id?.toString() || item?.product?.toString();
-            if (id) idSet.add(id);
-          }
-        }
-      }
-
-      targetProductIds = Array.from(idSet);
-    }
-
-    // Fetch Stock Logs using indexed { product: 1 } filter
-    const allLogs = await StockLog.find({ product: { $in: targetProductIds } })
-      .select("_id product change previousStock resultingStock createdAt description")
-      .lean();
+    const [allLogs, products] = await Promise.all([
+      StockLog.find({ product: { $in: targetProductIds } })
+        .select("_id product change previousStock resultingStock createdAt description")
+        .lean(),
+      Product.find({ _id: { $in: targetProductIds } })
+        .select("_id name stock price")
+        .lean(),
+    ]);
 
     // Group logs by productId
     const logsByProduct = new Map<string, any[]>();
@@ -201,11 +148,6 @@ async function reconcileStockHandler(req: NextRequest) {
       }
       logsByProduct.get(pId)!.push(log);
     }
-
-    // Fetch products in one indexed bulk query
-    const products = await Product.find({ _id: { $in: targetProductIds } })
-      .select("_id name stock")
-      .lean();
 
     const productMap = new Map<string, any>();
     for (const p of products) {
@@ -222,9 +164,26 @@ async function reconcileStockHandler(req: NextRequest) {
     // =========================================================================
     const logBulkOps: any[] = [];
     const productBulkOps: any[] = [];
+    const priceBulkOps: any[] = [];
     const modifiedProducts: ReconcileResult[] = [];
     let totalLogsCorrected = 0;
     let totalProductsUpdated = 0;
+    let pricesUpdatedCount = 0;
+
+    // Check prices for target products
+    for (const p of products) {
+      const pId = p._id.toString();
+      const currentP = Number(p.price) || 0;
+      const discoveredP = priceMap.get(pId);
+      if (currentP === 0 && discoveredP && discoveredP > 0) {
+        priceBulkOps.push({
+          updateOne: {
+            filter: { _id: p._id, $or: [{ price: 0 }, { price: { $exists: false } }, { price: null }] },
+            update: { $set: { price: discoveredP } },
+          },
+        });
+      }
+    }
 
     for (const [pId, rawLogs] of logsByProduct.entries()) {
       const product = productMap.get(pId);
@@ -374,6 +333,13 @@ async function reconcileStockHandler(req: NextRequest) {
     }
     if (productBulkOps.length > 0) {
       writePromises.push(Product.bulkWrite(productBulkOps, { ordered: false }));
+    }
+    if (priceBulkOps.length > 0) {
+      writePromises.push(
+        Product.bulkWrite(priceBulkOps, { ordered: false }).then((r) => {
+          pricesUpdatedCount = r.modifiedCount || 0;
+        })
+      );
     }
     if (writePromises.length > 0) {
       await Promise.all(writePromises);
