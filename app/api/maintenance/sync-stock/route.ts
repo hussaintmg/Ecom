@@ -37,7 +37,28 @@ async function reconcileStockHandler(req: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
+    const action = searchParams.get("action");
     let targetProductId: string | null = searchParams.get("productId");
+
+    if (action === "diagnostic") {
+      const [totalStockLogs, distinctLogProducts, totalInvoices, totalCreditSales, totalProducts] = await Promise.all([
+        StockLog.countDocuments(),
+        StockLog.distinct("product"),
+        Invoice.countDocuments(),
+        CreditSale.countDocuments(),
+        Product.countDocuments(),
+      ]);
+      return NextResponse.json({
+        success: true,
+        diagnostic: {
+          totalProducts,
+          totalStockLogs,
+          distinctLogProductsCount: distinctLogProducts.length,
+          totalInvoices,
+          totalCreditSales,
+        },
+      });
+    }
 
     if (!targetProductId && req.method === "POST") {
       try {
@@ -131,7 +152,9 @@ async function reconcileStockHandler(req: NextRequest) {
       logFilter.product = targetProductId;
     }
 
-    const allLogs = await StockLog.find(logFilter).lean();
+    const allLogs = await StockLog.find(logFilter)
+      .select("_id product change previousStock resultingStock createdAt description")
+      .lean();
 
     // Group logs by productId
     const logsByProduct = new Map<string, any[]>();
