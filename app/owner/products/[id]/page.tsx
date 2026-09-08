@@ -22,6 +22,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
     name: "",
     description: "",
     category: "",
+    price: "",
   });
 
   // Image management
@@ -72,6 +73,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
         name: p.name,
         description: p.description,
         category: typeof p.category === 'object' ? p.category._id : (p.category || ""),
+        price: p.price !== undefined && p.price !== null ? p.price.toString() : "",
       });
       setExistingImages(p.images || []);
     }
@@ -102,6 +104,7 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
       name: form.name,
       description: form.description,
       category: form.category,
+      price: form.price ? Number(form.price) : 0,
       images: finalImages,
     });
 
@@ -167,15 +170,30 @@ const ManageProductInner = ({ productId }: { productId: string }) => {
               <input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </label>
 
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</span>
-              <select className={inputClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                <option value="">Select Category</option>
-                {categories.map((c) => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Category *</span>
+                <select className={inputClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  <option value="">Select Category</option>
+                  {categories.map((c) => (
+                    <option key={c._id} value={c._id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Price (PKR)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="0"
+                  className={inputClass}
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
+                />
+              </label>
+            </div>
 
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</span>

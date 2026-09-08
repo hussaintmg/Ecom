@@ -113,6 +113,20 @@ const SellInner = () => {
     const parsedQty = parseFloat(qty);
     if (!isNaN(parsedQty) && unitPrice) {
       setSalePrice((parseFloat(unitPrice) * parsedQty).toString());
+    } else if (qty === "") {
+      setSalePrice("");
+    }
+  };
+
+  const handleUnitPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const u = e.target.value;
+    setUnitPrice(u);
+    const parsedU = parseFloat(u);
+    const parsedQty = parseFloat(quantity);
+    if (!isNaN(parsedU) && !isNaN(parsedQty) && parsedQty > 0) {
+      setSalePrice((parsedU * parsedQty).toString());
+    } else if (u === "") {
+      setSalePrice("");
     }
   };
 
@@ -122,7 +136,10 @@ const SellInner = () => {
     const parsedPrice = parseFloat(price);
     const parsedQty = parseFloat(quantity);
     if (!isNaN(parsedPrice) && !isNaN(parsedQty) && parsedQty > 0) {
-      setUnitPrice((parsedPrice / parsedQty).toString());
+      const calculatedUnit = parseFloat((parsedPrice / parsedQty).toFixed(2));
+      setUnitPrice(calculatedUnit.toString());
+    } else if (price === "") {
+      setUnitPrice("");
     }
   };
 
@@ -447,6 +464,11 @@ const SellInner = () => {
                                 {p.stock}
                               </span>
                             </p>
+                            {p.price > 0 && (
+                              <span className="text-xs font-semibold text-emerald-600">
+                                Rs. {p.price.toLocaleString()}
+                              </span>
+                            )}
                             {quantityInCart > 0 && (
                               <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold">
                                 Added: {quantityInCart}
@@ -575,7 +597,7 @@ const SellInner = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Quantity Repaired *
@@ -589,6 +611,20 @@ const SellInner = () => {
                   min={0.1}
                   step="any"
                   placeholder="e.g. 2"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Unit Cost (PKR)
+                </span>
+                <input
+                  type="number"
+                  className={inputClass}
+                  value={unitPrice}
+                  onChange={handleUnitPriceChange}
+                  min={0}
+                  step="any"
+                  placeholder="e.g. 1000"
                 />
               </label>
               <label className="flex flex-col gap-1.5">

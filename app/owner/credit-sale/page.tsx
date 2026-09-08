@@ -47,7 +47,7 @@ const CreditSaleInner = () => {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [salePrice, setSalePrice] = useState("");
-  const [unitPrice, setUnitPrice] = useState<number>(0);
+  const [unitPrice, setUnitPrice] = useState<string>("");
   const [description, setDescription] = useState("");
   const [customer, setCustomer] = useState<CustomerFormValue>(emptyCustomer);
   const [saving, setSaving] = useState(false);
@@ -95,7 +95,7 @@ const CreditSaleInner = () => {
   const resetItemForm = () => {
     setQuantity("");
     setSalePrice("");
-    setUnitPrice(0);
+    setUnitPrice("");
     setDescription("");
     setSelectedProductId("");
     setEditingIndex(null);
@@ -105,18 +105,40 @@ const CreditSaleInner = () => {
     setSelectedProductId(productId);
     setEditingIndex(null);
     const prod = products.find((p) => p._id === productId);
-    const basePrice = prod && prod.price !== undefined && prod.price !== null && !isNaN(Number(prod.price)) ? Number(prod.price) : 0;
-    setUnitPrice(basePrice);
+    const basePrice =
+      prod && prod.price !== undefined && prod.price !== null && !isNaN(Number(prod.price)) && Number(prod.price) > 0
+        ? Number(prod.price)
+        : 0;
     setQuantity("1");
-    setSalePrice(basePrice > 0 ? basePrice.toString() : "");
+    if (basePrice > 0) {
+      setUnitPrice(basePrice.toString());
+      setSalePrice(basePrice.toString());
+    } else {
+      setUnitPrice("");
+      setSalePrice("");
+    }
     setDescription("");
   };
 
   const handleQuantityChange = (val: string) => {
     setQuantity(val);
     const q = Number(val);
-    if (!isNaN(q) && q > 0 && unitPrice > 0) {
-      setSalePrice(Math.round(unitPrice * q).toString());
+    const u = Number(unitPrice);
+    if (!isNaN(q) && q > 0) {
+      if (!isNaN(u) && u > 0) {
+        setSalePrice(Math.round(u * q).toString());
+      }
+    } else if (val === "") {
+      setSalePrice("");
+    }
+  };
+
+  const handleUnitPriceChange = (val: string) => {
+    setUnitPrice(val);
+    const u = Number(val);
+    const q = Number(quantity);
+    if (!isNaN(u) && u >= 0 && !isNaN(q) && q > 0) {
+      setSalePrice(Math.round(u * q).toString());
     } else if (val === "") {
       setSalePrice("");
     }
@@ -126,8 +148,11 @@ const CreditSaleInner = () => {
     setSalePrice(val);
     const p = Number(val);
     const q = Number(quantity);
-    if (!isNaN(p) && p > 0 && !isNaN(q) && q > 0) {
-      setUnitPrice(p / q);
+    if (!isNaN(p) && p >= 0 && !isNaN(q) && q > 0) {
+      const calculatedUnit = parseFloat((p / q).toFixed(2));
+      setUnitPrice(calculatedUnit.toString());
+    } else if (val === "") {
+      setUnitPrice("");
     }
   };
 
@@ -198,8 +223,8 @@ const CreditSaleInner = () => {
     setSelectedProductId(item.productId);
     setQuantity(item.quantity.toString());
     setSalePrice(item.salePrice.toString());
-    const effUnitPrice = item.quantity > 0 ? item.salePrice / item.quantity : (item.product?.price || 0);
-    setUnitPrice(effUnitPrice);
+    const effUnitPrice = item.quantity > 0 ? parseFloat((item.salePrice / item.quantity).toFixed(2)) : (item.product?.price || 0);
+    setUnitPrice(effUnitPrice > 0 ? effUnitPrice.toString() : "");
     setDescription(item.description);
     setEditingIndex(index);
   };
@@ -386,17 +411,24 @@ const CreditSaleInner = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-sm truncate">{p.name}</h3>
-                      <p className="text-xs text-muted-foreground truncate mt-1">
-                        Stock:
-                        <span className={p.stock > 0 ? "text-emerald-600 font-bold ml-1" : "text-red-500 font-bold ml-1"}>
-                          {p.stock}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <p className="text-xs text-muted-foreground truncate">
+                          Stock:
+                          <span className={p.stock > 0 ? "text-emerald-600 font-bold ml-1" : "text-red-500 font-bold ml-1"}>
+                            {p.stock}
+                          </span>
+                        </p>
+                        {p.price > 0 && (
+                          <span className="text-xs font-semibold text-emerald-600">
+                            Rs. {p.price.toLocaleString()}
+                          </span>
+                        )}
                         {quantityInList > 0 && (
-                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold ml-2">
+                          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold">
                             Added: {quantityInList}
                           </span>
                         )}
-                      </p>
+                      </div>
                     </div>
                     {selectedProductId === p._id && (
                       <div className="w-2 h-2 rounded-full bg-primary" />
@@ -498,7 +530,7 @@ const CreditSaleInner = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Quantity *
@@ -515,10 +547,24 @@ const CreditSaleInner = () => {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Unit Price (PKR)
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  className={inputClass}
+                  value={unitPrice}
+                  onChange={(e) => handleUnitPriceChange(e.target.value)}
+                  placeholder="e.g. 1000"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Total Credit Price (PKR) *
                 </span>
                 <input
                   type="number"
+                  step="any"
                   className={inputClass}
                   value={salePrice}
                   onChange={(e) => handleSalePriceChange(e.target.value)}

@@ -97,13 +97,18 @@ export async function GET(req: NextRequest) {
     // =========================
     // Products
     // =========================
-    const products = await Product.find(query)
+    const rawProducts = await Product.find(query)
       .select("name images description stock category price barcode")
       .populate("category")
       .sort(sortOption)
       .lean()
       .skip(skip)
       .limit(limit);
+
+    const products = rawProducts.map((p: any) => ({
+      ...p,
+      price: typeof p.price === "number" && !isNaN(p.price) ? p.price : 0,
+    }));
 
     // =========================
     // Total Count
@@ -313,6 +318,7 @@ export async function POST(request: NextRequest) {
             description: `${body.description} ${product.name} ${voltage}`,
             category: body.category,
             stock: body.stock,
+            price: Number(body.price) || 0,
             images: body.images || [],
           });
         }

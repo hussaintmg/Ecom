@@ -96,6 +96,13 @@ export async function PUT(
       }
     }
 
+    if (data.price !== undefined && data.price !== null && data.price !== "") {
+      const parsedPrice = Number(data.price);
+      if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+        data.price = parsedPrice;
+      }
+    }
+
     const product = await Product.findByIdAndUpdate(id, data, {
       returnDocument: "after",
       runValidators: true,
