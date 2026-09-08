@@ -31,9 +31,11 @@ async function reconcileStockHandler(req: NextRequest) {
     let pricesUpdatedCount = 0;
     try {
       const invoices = await Invoice.find({ "products.0": { $exists: true } })
+        .select("products")
         .sort({ createdAt: 1 })
         .lean();
       const creditSales = await CreditSale.find({ "products.0": { $exists: true } })
+        .select("products")
         .sort({ createdAt: 1 })
         .lean();
 
@@ -71,14 +73,16 @@ async function reconcileStockHandler(req: NextRequest) {
         }
       }
 
-      for (const [pId, unitP] of priceMap.entries()) {
-        const updateRes = await Product.updateOne(
-          { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
-          { $set: { price: unitP } }
-        );
-        if (updateRes.modifiedCount > 0) {
-          pricesUpdatedCount++;
-        }
+      const priceBulkOps = Array.from(priceMap.entries()).map(([pId, unitP]) => ({
+        updateOne: {
+          filter: { _id: pId, $or: [{ price: 0 }, { price: { $exists: false } }] },
+          update: { $set: { price: unitP } },
+        },
+      }));
+
+      if (priceBulkOps.length > 0) {
+        const bulkRes = await Product.bulkWrite(priceBulkOps, { ordered: false });
+        pricesUpdatedCount = bulkRes.modifiedCount || 0;
       }
     } catch (priceErr) {
       console.error("Error backfilling prices:", priceErr);
