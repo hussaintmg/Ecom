@@ -22,6 +22,11 @@ async function reconcileStockHandler(req: NextRequest) {
   try {
     await connectDB();
 
+    const { searchParams } = new URL(req.url);
+    const onlyPrices =
+      searchParams.get("only") === "prices" ||
+      searchParams.get("action") === "prices";
+
     // 1. Backfill product prices from latest Invoices and CreditSales FIRST
     let pricesUpdatedCount = 0;
     try {
@@ -79,9 +84,16 @@ async function reconcileStockHandler(req: NextRequest) {
       console.error("Error backfilling prices:", priceErr);
     }
 
+    if (onlyPrices) {
+      return NextResponse.json({
+        success: true,
+        message: "Product prices backfilled successfully from invoices and credit sales.",
+        pricesUpdatedCount,
+      });
+    }
+
     // 2. Read optional productId from URL params or POST JSON body
     let targetProductId: string | null = null;
-    const { searchParams } = new URL(req.url);
     if (searchParams.get("productId")) {
       targetProductId = searchParams.get("productId");
     } else if (req.method === "POST") {
@@ -111,7 +123,7 @@ async function reconcileStockHandler(req: NextRequest) {
       productQuery._id = { $in: productIdsWithLogs };
     }
 
-    const products = await Product.find(productQuery).select("_id name stock");
+    const products = await Product.find(productQuery).select("_id name stock").lean();
 
     if (!products || products.length === 0) {
       return NextResponse.json({
@@ -122,6 +134,7 @@ async function reconcileStockHandler(req: NextRequest) {
         totalProductsChecked: 0,
         productsUpdatedCount: 0,
         stockLogsCorrectedCount: 0,
+        pricesUpdatedCount,
         details: [],
       });
     }
@@ -129,8 +142,10 @@ async function reconcileStockHandler(req: NextRequest) {
     let totalProductsUpdated = 0;
     let totalLogsCorrected = 0;
     const details: ReconcileResult[] = [];
+    const logBulkOps: any[] = [];
+    const productBulkOps: any[] = [];
 
-    // 3. Process each product chronologically
+    // 4. Process each product chronologically in memory
     for (const product of products) {
       const pId = product._id;
       const logs = await StockLog.find({ product: pId }).sort({
@@ -140,27 +155,11 @@ async function reconcileStockHandler(req: NextRequest) {
 
       const oldStock = Number(product.stock) || 0;
 
-      // Case A: No stock logs exist
       if (!logs || logs.length === 0) {
-        if (product.stock === undefined || product.stock === null || isNaN(product.stock)) {
-          product.stock = 0;
-          await product.save();
-          totalProductsUpdated++;
-          details.push({
-            productId: pId.toString(),
-            productName: product.name,
-            oldStock,
-            newStock: 0,
-            stockChanged: true,
-            totalLogs: 0,
-            logsCorrected: 0,
-          });
-        }
         continue;
       }
 
-      // Case B: Stock logs exist. Reconstruct the chronological ledger.
-      // Determine the initial starting stock baseline before the first log
+      // Reconstruct the chronological ledger
       const firstLog = logs[0];
       let initialStock = 0;
 
@@ -187,7 +186,6 @@ async function reconcileStockHandler(req: NextRequest) {
       } else if (hasValidRes && firstLog.change !== undefined) {
         initialStock = Number(firstLog.resultingStock) - Number(firstLog.change);
       } else {
-        // Fallback: derive from current stock minus total changes
         const totalNetChange = logs.reduce(
           (sum, l) => sum + (Number(l.change) || 0),
           0
@@ -195,7 +193,7 @@ async function reconcileStockHandler(req: NextRequest) {
         initialStock = Math.max(0, oldStock - totalNetChange);
       }
 
-      // Simulation pass: check if any log change would drop stock below 0
+      // Simulation pass
       let simBalance = initialStock;
       let minBalance = simBalance;
       for (const log of logs) {
@@ -205,12 +203,11 @@ async function reconcileStockHandler(req: NextRequest) {
         }
       }
 
-      // If simulated balance went negative, elevate baseline so stock doesn't drop below 0
       if (minBalance < 0) {
         initialStock += Math.abs(minBalance);
       }
 
-      // Execution pass: calibrate previousStock & resultingStock on every log
+      // Execution pass: calibrate previousStock & resultingStock
       let runningStock = initialStock;
       let logsUpdatedForProduct = 0;
 
@@ -223,9 +220,12 @@ async function reconcileStockHandler(req: NextRequest) {
           log.previousStock !== prev || log.resultingStock !== next;
 
         if (needsUpdate) {
-          log.previousStock = prev;
-          log.resultingStock = next;
-          await log.save();
+          logBulkOps.push({
+            updateOne: {
+              filter: { _id: log._id },
+              update: { $set: { previousStock: prev, resultingStock: next } },
+            },
+          });
           logsUpdatedForProduct++;
           totalLogsCorrected++;
         }
@@ -233,13 +233,16 @@ async function reconcileStockHandler(req: NextRequest) {
         runningStock = next;
       }
 
-      // Ensure runningStock is not negative
       const finalStock = Math.max(0, runningStock);
 
       let stockChanged = false;
       if (product.stock !== finalStock) {
-        product.stock = finalStock;
-        await product.save();
+        productBulkOps.push({
+          updateOne: {
+            filter: { _id: pId },
+            update: { $set: { stock: finalStock } },
+          },
+        });
         stockChanged = true;
         totalProductsUpdated++;
       }
@@ -255,6 +258,18 @@ async function reconcileStockHandler(req: NextRequest) {
           logsCorrected: logsUpdatedForProduct,
         });
       }
+    }
+
+    // Execute bulk updates in parallel
+    const writePromises: Promise<any>[] = [];
+    if (logBulkOps.length > 0) {
+      writePromises.push(StockLog.bulkWrite(logBulkOps, { ordered: false }));
+    }
+    if (productBulkOps.length > 0) {
+      writePromises.push(Product.bulkWrite(productBulkOps, { ordered: false }));
+    }
+    if (writePromises.length > 0) {
+      await Promise.all(writePromises);
     }
 
     return NextResponse.json({
