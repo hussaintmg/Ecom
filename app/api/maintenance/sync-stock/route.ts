@@ -41,19 +41,17 @@ async function reconcileStockHandler(req: NextRequest) {
     let targetProductId: string | null = searchParams.get("productId");
 
     if (action === "diagnostic") {
-      const [totalStockLogs, distinctLogProducts, totalInvoices, totalCreditSales, totalProducts] = await Promise.all([
-        StockLog.countDocuments(),
-        StockLog.distinct("product"),
-        Invoice.countDocuments(),
-        CreditSale.countDocuments(),
-        Product.countDocuments(),
+      const [totalStockLogs, totalInvoices, totalCreditSales, totalProducts] = await Promise.all([
+        StockLog.estimatedDocumentCount(),
+        Invoice.estimatedDocumentCount(),
+        CreditSale.estimatedDocumentCount(),
+        Product.estimatedDocumentCount(),
       ]);
       return NextResponse.json({
         success: true,
         diagnostic: {
           totalProducts,
           totalStockLogs,
-          distinctLogProductsCount: distinctLogProducts.length,
           totalInvoices,
           totalCreditSales,
         },
@@ -143,16 +141,53 @@ async function reconcileStockHandler(req: NextRequest) {
     }
 
     // =========================================================================
-    // STEP 2: Fetch Stock Logs for target product or all products with logs
-    // NOTE: Avoid unindexed database sorts to prevent Atlas memory limits & timeouts.
-    // We fetch raw logs and sort in-memory.
+    // STEP 2: Discover Target Products
+    // Because the product collection contains 15,000+ items, scanning all of them
+    // or running unindexed distinct() on StockLog triggers Vercel timeouts.
+    // Instead, we target all products with physical stock (> 0) plus all products
+    // ever involved in an Invoice or CreditSale.
     // =========================================================================
-    const logFilter: any = {};
+    let targetProductIds: string[] = [];
+
     if (targetProductId) {
-      logFilter.product = targetProductId;
+      targetProductIds = [targetProductId];
+    } else {
+      const [stockProducts, invoices, creditSales] = await Promise.all([
+        Product.find({ stock: { $gt: 0 } }).select("_id").lean(),
+        Invoice.find({}).select("products.product product").lean(),
+        CreditSale.find({}).select("products.product").lean(),
+      ]);
+
+      const idSet = new Set<string>();
+      for (const p of stockProducts) {
+        if (p?._id) idSet.add(p._id.toString());
+      }
+      for (const inv of invoices) {
+        if (Array.isArray(inv.products)) {
+          for (const item of inv.products) {
+            const id = item?.product?._id?.toString() || item?.product?.toString();
+            if (id) idSet.add(id);
+          }
+        }
+        if (inv.product) {
+          const id = (inv.product as any)?._id?.toString() || inv.product.toString();
+          if (id) idSet.add(id);
+        }
+      }
+      for (const cs of creditSales) {
+        if (Array.isArray(cs.products)) {
+          for (const item of cs.products) {
+            const id = item?.product?._id?.toString() || item?.product?.toString();
+            if (id) idSet.add(id);
+          }
+        }
+      }
+
+      targetProductIds = Array.from(idSet);
     }
 
-    const allLogs = await StockLog.find(logFilter)
+    // Fetch Stock Logs using indexed { product: 1 } filter
+    const allLogs = await StockLog.find({ product: { $in: targetProductIds } })
       .select("_id product change previousStock resultingStock createdAt description")
       .lean();
 
@@ -167,12 +202,8 @@ async function reconcileStockHandler(req: NextRequest) {
       logsByProduct.get(pId)!.push(log);
     }
 
-    // Fetch only the products that actually have stock logs
-    const productIdsToFetch = targetProductId
-      ? [targetProductId]
-      : Array.from(logsByProduct.keys());
-
-    const products = await Product.find({ _id: { $in: productIdsToFetch } })
+    // Fetch products in one indexed bulk query
+    const products = await Product.find({ _id: { $in: targetProductIds } })
       .select("_id name stock")
       .lean();
 
@@ -352,7 +383,8 @@ async function reconcileStockHandler(req: NextRequest) {
       success: true,
       message: "Stock and price reconciliation completed successfully.",
       summary: {
-        totalProductsWithLogs: logsByProduct.size,
+        totalTargetProducts: targetProductIds.length,
+        productsWithLogs: logsByProduct.size,
         productsUpdatedCount: totalProductsUpdated,
         stockLogsExamined: allLogs.length,
         stockLogsCorrectedCount: totalLogsCorrected,
