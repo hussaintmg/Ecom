@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/utils/db";
 import CreditSale from "@/models/CreditSale";
 import Product from "@/models/Product";
+import User from "@/models/User";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
 import { normalizeCustomerDetails } from "@/utils/customerDetails";
@@ -15,49 +16,138 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
-    const search = searchParams.get("search") || "";
+    const search = (searchParams.get("search") || "").trim();
     const product = searchParams.get("product");
     const category = searchParams.get("category");
+    const status = searchParams.get("status");
+    const createdBy = searchParams.get("createdBy");
+    const balanceStatus = searchParams.get("balanceStatus");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const sort = searchParams.get("sort") || "newest";
     const skip = (page - 1) * limit;
 
-    const query: any = {};
+    const conditions: any[] = [];
 
+    // Universal search across customer details, products, description, staff, and status
     if (search) {
-      const products = await Product.find({
-        name: { $regex: search, $options: "i" },
+      const cleanSearch = search.replace(/^CR-/i, "");
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const cleanEscaped = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = { $regex: escaped, $options: "i" };
+
+      // Search in products by name
+      const matchingProducts = await Product.find({
+        name: searchRegex,
       }).select("_id");
-      query["products.product"] = { $in: products.map((p) => p._id) };
+      const productIds = matchingProducts.map((p) => p._id);
+
+      // Search in users by name or email
+      const matchingUsers = await User.find({
+        $or: [{ name: searchRegex }, { email: searchRegex }],
+      }).select("_id");
+      const userIds = matchingUsers.map((u) => u._id);
+
+      const searchOr: any[] = [
+        { customerName: searchRegex },
+        { customerPhone: searchRegex },
+        { customerEmail: searchRegex },
+        { customerCity: searchRegex },
+        { customerAddress: searchRegex },
+        { customerNote: searchRegex },
+        { "products.description": searchRegex },
+        { status: searchRegex },
+      ];
+
+      if (productIds.length > 0) {
+        searchOr.push({ "products.product": { $in: productIds } });
+      }
+
+      if (userIds.length > 0) {
+        searchOr.push({ createdBy: { $in: userIds } });
+      }
+
+      if (/^[0-9a-fA-F]{24}$/.test(cleanSearch)) {
+        searchOr.push({ _id: cleanSearch });
+      }
+
+      conditions.push({ $or: searchOr });
     }
 
-    if (product) {
-      query["products.product"] = product;
+    if (product && product !== "all") {
+      conditions.push({ "products.product": product });
     }
 
-    if (category) {
-      query["products.category"] = category;
+    if (category && category !== "all") {
+      conditions.push({ "products.category": category });
+    }
+
+    if (status && status !== "all") {
+      conditions.push({ status });
+    }
+
+    if (createdBy && createdBy !== "all") {
+      conditions.push({ createdBy });
+    }
+
+    if (balanceStatus === "pending") {
+      conditions.push({ remainingAmount: { $gt: 0 } });
+    } else if (balanceStatus === "settled") {
+      conditions.push({ remainingAmount: { $lte: 0 } });
     }
 
     if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
+      const dateCond: any = {};
+      if (startDate) dateCond.$gte = new Date(startDate);
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
+        dateCond.$lte = end;
       }
+      conditions.push({ createdAt: dateCond });
     }
+
+    const query = conditions.length > 0 ? { $and: conditions } : {};
+
+    // Sort order
+    let sortObj: any = { createdAt: -1 };
+    if (sort === "oldest") sortObj = { createdAt: 1 };
+    else if (sort === "remaining_desc") sortObj = { remainingAmount: -1 };
+    else if (sort === "total_desc") sortObj = { totalAmount: -1 };
+    else sortObj = { createdAt: -1 };
 
     const totalCreditSales = await CreditSale.countDocuments(query);
     const totalPages = Math.ceil(totalCreditSales / limit);
+
+    // Aggregate summary statistics
+    const aggregateSums = await CreditSale.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalAmountSum: { $sum: { $ifNull: ["$totalAmount", 0] } },
+          totalRemainingSum: { $sum: { $ifNull: ["$remainingAmount", 0] } },
+          totalPaidSum: { $sum: { $ifNull: ["$paidAmount", 0] } },
+        },
+      },
+    ]);
+
+    const totalAmountSum = aggregateSums[0]?.totalAmountSum || 0;
+    const totalRemainingSum = aggregateSums[0]?.totalRemainingSum || 0;
+    const totalPaidSum = aggregateSums[0]?.totalPaidSum || 0;
+
+    // Available creators for staff dropdown
+    const creators = await User.find({ role: { $in: ["admin", "owner"] } }).select(
+      "_id name email role"
+    );
+
     const creditSales = await CreditSale.find(query)
       .populate("products.product", "name price images stock description")
       .populate("products.category", "name")
       .populate("createdBy", "name email role")
       .populate("payments.receivedBy", "name email role")
       .populate("generatedInvoice", "_id type createdAt")
-      .sort({ createdAt: -1 })
+      .sort(sortObj)
       .skip(skip)
       .limit(limit);
 
@@ -65,6 +155,10 @@ export async function GET(req: NextRequest) {
       success: true,
       creditSales,
       totalCreditSales,
+      totalAmountSum,
+      totalRemainingSum,
+      totalPaidSum,
+      creators,
       totalPages,
       currentPage: page,
       hasMore: skip + creditSales.length < totalCreditSales,

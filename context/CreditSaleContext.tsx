@@ -51,9 +51,31 @@ export interface CreateCreditSalePayload {
   }[];
 }
 
+export interface CreditSaleFilterOptions {
+  product?: string;
+  category?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  createdBy?: string;
+  balanceStatus?: string;
+  sort?: string;
+}
+
+export interface CreatorItem {
+  _id: string;
+  name: string;
+  email?: string;
+  role?: string;
+}
+
 interface CreditSaleContextType {
   creditSales: CreditSaleItem[];
   totalCreditSales: number;
+  totalAmountSum: number;
+  totalRemainingSum: number;
+  totalPaidSum: number;
+  creators: CreatorItem[];
   currentPage: number;
   totalPages: number;
   loading: boolean;
@@ -61,12 +83,7 @@ interface CreditSaleContextType {
   fetchCreditSales: (
     page?: number,
     search?: string,
-    filters?: {
-      product?: string;
-      category?: string;
-      startDate?: string;
-      endDate?: string;
-    }
+    filters?: CreditSaleFilterOptions
   ) => Promise<void>;
   createCreditSale: (
     data: CreateCreditSalePayload
@@ -89,6 +106,10 @@ export const CreditSaleProvider = ({
 }) => {
   const [creditSales, setCreditSales] = useState<CreditSaleItem[]>([]);
   const [totalCreditSales, setTotalCreditSales] = useState(0);
+  const [totalAmountSum, setTotalAmountSum] = useState(0);
+  const [totalRemainingSum, setTotalRemainingSum] = useState(0);
+  const [totalPaidSum, setTotalPaidSum] = useState(0);
+  const [creators, setCreators] = useState<CreatorItem[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -98,12 +119,7 @@ export const CreditSaleProvider = ({
     async (
       page: number = 1,
       search: string = "",
-      filters: {
-        product?: string;
-        category?: string;
-        startDate?: string;
-        endDate?: string;
-      } = {}
+      filters: CreditSaleFilterOptions = {}
     ) => {
       setLoading(true);
       try {
@@ -113,8 +129,12 @@ export const CreditSaleProvider = ({
         if (search) queryParams.append("search", search);
         if (filters.product) queryParams.append("product", filters.product);
         if (filters.category) queryParams.append("category", filters.category);
+        if (filters.status) queryParams.append("status", filters.status);
+        if (filters.createdBy) queryParams.append("createdBy", filters.createdBy);
+        if (filters.balanceStatus) queryParams.append("balanceStatus", filters.balanceStatus);
         if (filters.startDate) queryParams.append("startDate", filters.startDate);
         if (filters.endDate) queryParams.append("endDate", filters.endDate);
+        if (filters.sort) queryParams.append("sort", filters.sort);
 
         const res = await fetch(`/api/credit-sales?${queryParams.toString()}`);
         const data = await res.json();
@@ -125,6 +145,10 @@ export const CreditSaleProvider = ({
 
         setCreditSales(data.creditSales || []);
         setTotalCreditSales(data.totalCreditSales || 0);
+        setTotalAmountSum(data.totalAmountSum || 0);
+        setTotalRemainingSum(data.totalRemainingSum || 0);
+        setTotalPaidSum(data.totalPaidSum || 0);
+        if (data.creators) setCreators(data.creators);
         setCurrentPage(data.currentPage || page);
         setTotalPages(data.totalPages || 1);
       } catch (err: any) {
@@ -227,6 +251,10 @@ export const CreditSaleProvider = ({
       value={{
         creditSales,
         totalCreditSales,
+        totalAmountSum,
+        totalRemainingSum,
+        totalPaidSum,
+        creators,
         currentPage,
         totalPages,
         loading,

@@ -55,9 +55,28 @@ export interface CreateInvoicePayload {
   type?: string;
 }
 
+export interface InvoiceFilterOptions {
+  product?: string;
+  category?: string;
+  type?: string;
+  soldBy?: string;
+  startDate?: string;
+  endDate?: string;
+  sort?: string;
+}
+
+export interface SellerItem {
+  _id: string;
+  name: string;
+  email?: string;
+  role?: string;
+}
+
 interface InvoiceContextType {
   invoices: InvoiceItem[];
   totalInvoices: number;
+  totalAmountSum: number;
+  sellers: SellerItem[];
   currentPage: number;
   totalPages: number;
   loading: boolean;
@@ -66,12 +85,7 @@ interface InvoiceContextType {
   fetchInvoices: (
     page?: number,
     search?: string,
-    filters?: {
-      product?: string;
-      category?: string;
-      startDate?: string;
-      endDate?: string;
-    },
+    filters?: InvoiceFilterOptions,
   ) => Promise<void>;
   createInvoice: (data: CreateInvoicePayload) => Promise<any | null>;
   getInvoiceById: (id: string) => Promise<InvoiceItem | null>;
@@ -89,6 +103,8 @@ export const InvoiceProvider = ({
 }) => {
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [totalInvoices, setTotalInvoices] = useState(0);
+  const [totalAmountSum, setTotalAmountSum] = useState(0);
+  const [sellers, setSellers] = useState<SellerItem[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -99,12 +115,7 @@ export const InvoiceProvider = ({
     async (
       page: number = 1,
       search: string = "",
-      filters: {
-        product?: string;
-        category?: string;
-        startDate?: string;
-        endDate?: string;
-      } = {},
+      filters: InvoiceFilterOptions = {},
     ) => {
       setLoading(true);
       setError(null);
@@ -123,11 +134,20 @@ export const InvoiceProvider = ({
         if (filters.category) {
           queryParams.append("category", filters.category);
         }
+        if (filters.type) {
+          queryParams.append("type", filters.type);
+        }
+        if (filters.soldBy) {
+          queryParams.append("soldBy", filters.soldBy);
+        }
         if (filters.startDate) {
           queryParams.append("startDate", filters.startDate);
         }
         if (filters.endDate) {
           queryParams.append("endDate", filters.endDate);
+        }
+        if (filters.sort) {
+          queryParams.append("sort", filters.sort);
         }
 
         const res = await fetch(`/api/invoices?${queryParams.toString()}`);
@@ -136,6 +156,8 @@ export const InvoiceProvider = ({
         if (res.ok && data.success) {
           setInvoices(data.invoices || []);
           setTotalInvoices(data.totalInvoices || 0);
+          setTotalAmountSum(data.totalAmountSum || 0);
+          if (data.sellers) setSellers(data.sellers);
           setCurrentPage(data.currentPage || page);
           setTotalPages(data.totalPages || 1);
         } else {
@@ -240,6 +262,8 @@ export const InvoiceProvider = ({
       value={{
         invoices,
         totalInvoices,
+        totalAmountSum,
+        sellers,
         currentPage,
         totalPages,
         loading,

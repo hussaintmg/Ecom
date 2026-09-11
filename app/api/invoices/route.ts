@@ -18,72 +18,130 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
-    const search = searchParams.get("search") || "";
+    const search = (searchParams.get("search") || "").trim();
     const product = searchParams.get("product");
     const category = searchParams.get("category");
+    const type = searchParams.get("type");
+    const soldBy = searchParams.get("soldBy");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const sort = searchParams.get("sort") || "newest";
     
     const skip = (page - 1) * limit;
 
-    let query: any = {};
+    const conditions: any[] = [];
     
-    // Search by product name (legacy and nested list) or by customer details
+    // Universal search across customer details, products, description, staff, and type
     if (search) {
-      const products = await Product.find({ 
-        name: { $regex: search, $options: "i" } 
-      }).select("_id");
-      
-      const productIds = products.map(p => p._id);
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      query.$or = [
-        { product: { $in: productIds } },
-        { "products.product": { $in: productIds } },
-        { customerName: { $regex: escaped, $options: "i" } },
-        { customerPhone: { $regex: escaped, $options: "i" } },
-        { customerEmail: { $regex: escaped, $options: "i" } },
-        { customerCity: { $regex: escaped, $options: "i" } },
+      const searchRegex = { $regex: escaped, $options: "i" };
+
+      const matchingProducts = await Product.find({ 
+        name: searchRegex 
+      }).select("_id");
+      const productIds = matchingProducts.map(p => p._id);
+
+      const matchingUsers = await User.find({
+        $or: [
+          { name: searchRegex },
+          { email: searchRegex }
+        ]
+      }).select("_id");
+      const userIds = matchingUsers.map(u => u._id);
+
+      const searchOr: any[] = [
+        { customerName: searchRegex },
+        { customerPhone: searchRegex },
+        { customerEmail: searchRegex },
+        { customerCity: searchRegex },
+        { customerAddress: searchRegex },
+        { customerNote: searchRegex },
+        { description: searchRegex },
+        { "products.description": searchRegex },
+        { type: searchRegex },
       ];
+
+      if (productIds.length > 0) {
+        searchOr.push({ product: { $in: productIds } });
+        searchOr.push({ "products.product": { $in: productIds } });
+      }
+
+      if (userIds.length > 0) {
+        searchOr.push({ soldBy: { $in: userIds } });
+      }
+
+      if (/^[0-9a-fA-F]{24}$/.test(search)) {
+        searchOr.push({ _id: search });
+      }
+
+      conditions.push({ $or: searchOr });
     }
     
-    if (product) {
-      query.$or = [
-        { product: product },
-        { "products.product": product }
-      ];
+    if (product && product !== "all") {
+      conditions.push({
+        $or: [
+          { product: product },
+          { "products.product": product }
+        ]
+      });
     }
 
-    if (category) {
-      const categoryFilter = {
+    if (category && category !== "all") {
+      conditions.push({
         $or: [
           { category: category },
           { "products.category": category }
         ]
-      };
-      if (query.$or) {
-        query.$and = [
-          { $or: query.$or },
-          categoryFilter
-        ];
-        delete query.$or;
-      } else {
-        query.$or = categoryFilter.$or;
-      }
+      });
+    }
+
+    if (type && type !== "all") {
+      conditions.push({ type });
+    }
+
+    if (soldBy && soldBy !== "all") {
+      conditions.push({ soldBy });
     }
 
     if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
+      const dateCond: any = {};
+      if (startDate) dateCond.$gte = new Date(startDate);
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
+        dateCond.$lte = end;
       }
+      conditions.push({ createdAt: dateCond });
     }
 
-    // Get total count
+    const query = conditions.length > 0 ? { $and: conditions } : {};
+
+    // Sort configuration
+    let sortObj: any = { createdAt: -1 };
+    if (sort === "oldest") sortObj = { createdAt: 1 };
+    else if (sort === "amount_desc") sortObj = { totalAmount: -1 };
+    else if (sort === "amount_asc") sortObj = { totalAmount: 1 };
+    else sortObj = { createdAt: -1 };
+
+    // Get total count & aggregate total revenue for matched invoices
     const totalInvoices = await Invoice.countDocuments(query);
     const totalPages = Math.ceil(totalInvoices / limit);
+
+    const aggregateSum = await Invoice.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: {
+            $sum: { $ifNull: ["$totalAmount", "$salePrice", 0] }
+          }
+        }
+      }
+    ]);
+    const totalAmountSum = aggregateSum[0]?.totalRevenue || 0;
+
+    // Available sellers for filter dropdown
+    const sellers = await User.find({ role: { $in: ["admin", "owner"] } }).select("_id name email role");
 
     // Get invoices with pagination and populate legacy + nested properties
     const invoices = await Invoice.find(query)
@@ -92,7 +150,7 @@ export async function GET(req: NextRequest) {
       .populate("products.product", "name price images stock description")
       .populate("products.category", "name")
       .populate("soldBy", "name email role")
-      .sort({ createdAt: -1 })
+      .sort(sortObj)
       .skip(skip)
       .limit(limit);
 
@@ -123,6 +181,8 @@ export async function GET(req: NextRequest) {
       success: true,
       invoices: formattedInvoices,
       totalInvoices,
+      totalAmountSum,
+      sellers,
       totalPages,
       currentPage: page,
       hasMore: skip + formattedInvoices.length < totalInvoices,

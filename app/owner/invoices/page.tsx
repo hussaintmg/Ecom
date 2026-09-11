@@ -7,12 +7,10 @@ import { CategoryProvider, useCategories } from "@/context/CategoryContext";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
 import { CustomerCell, CustomerDetailsModal } from "@/components/dashboard/InvoiceCustomer";
+import InvoiceFilterBar, { InvoiceFilterState } from "@/components/dashboard/InvoiceFilterBar";
 import {
   RefreshCw,
   ReceiptText,
-  Filter,
-  CalendarDays,
-  Search,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -33,40 +31,41 @@ const Skeleton = () => (
   </div>
 );
 
+const initialFilters: InvoiceFilterState = {
+  search: "",
+  product: "all",
+  category: "all",
+  type: "all",
+  soldBy: "all",
+  startDate: "",
+  endDate: "",
+  datePreset: "all",
+  sort: "newest",
+};
+
 const InvoicesInner = () => {
   const {
     invoices,
     totalInvoices,
+    totalAmountSum,
+    sellers,
     currentPage,
     totalPages,
     loading,
     fetchInvoices,
     deleteInvoice,
     setCurrentPage,
-    searchQuery,
-    setSearchQuery,
   } = useInvoices();
   const { products, fetchProducts } = useProducts();
   const { categories, fetchCategories } = useCategories();
 
-  const [filterProduct, setFilterProduct] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterStart, setFilterStart] = useState("");
-  const [filterEnd, setFilterEnd] = useState("");
+  const [filters, setFilters] = useState<InvoiceFilterState>(initialFilters);
   const [refreshing, setRefreshing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState("");
   // Invoice whose full customer record is open in the details sheet
   const [detailInvoice, setDetailInvoice] = useState<any>(null);
-  const [localSearch, setLocalSearch] = useState(searchQuery || "");
-  const [prevSearch, setPrevSearch] = useState(searchQuery || "");
-  const [prevFilters, setPrevFilters] = useState({
-    filterProduct,
-    filterCategory,
-    filterStart,
-    filterEnd,
-  });
 
   useEffect(() => {
     fetchProducts(1, "", "All");
@@ -75,64 +74,35 @@ const InvoicesInner = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const searchChanged = localSearch !== prevSearch;
-      const filtersChanged =
-        filterProduct !== prevFilters.filterProduct ||
-        filterCategory !== prevFilters.filterCategory ||
-        filterStart !== prevFilters.filterStart ||
-        filterEnd !== prevFilters.filterEnd;
-
-      if (searchChanged || filtersChanged) {
-        setPrevSearch(localSearch);
-        setPrevFilters({ filterProduct, filterCategory, filterStart, filterEnd });
-        fetchInvoices(1, localSearch, {
-          product: filterProduct,
-          category: filterCategory,
-          startDate: filterStart,
-          endDate: filterEnd,
-        });
-      }
-    }, 600);
+      fetchInvoices(1, filters.search, {
+        product: filters.product === "all" ? "" : filters.product,
+        category: filters.category === "all" ? "" : filters.category,
+        type: filters.type === "all" ? "" : filters.type,
+        soldBy: filters.soldBy === "all" ? "" : filters.soldBy,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        sort: filters.sort,
+      });
+    }, 400);
     return () => clearTimeout(timer);
-  }, [localSearch, filterProduct, filterCategory, filterStart, filterEnd, fetchInvoices]);
+  }, [filters, fetchInvoices]);
 
-  useEffect(() => {
-    fetchInvoices(currentPage, prevSearch, {
-      product: filterProduct,
-      category: filterCategory,
-      startDate: filterStart,
-      endDate: filterEnd,
-    });
-  }, [currentPage, fetchInvoices]);
-
-  const handleApplyFilters = () => {
-    setCurrentPage(1);
-    fetchInvoices(1, localSearch, {
-      product: filterProduct,
-      category: filterCategory,
-      startDate: filterStart,
-      endDate: filterEnd,
-    });
-  };
-
-  const clearFilters = () => {
-    setFilterProduct("");
-    setFilterCategory("");
-    setFilterStart("");
-    setFilterEnd("");
-    setLocalSearch("");
-    setSearchQuery("");
+  const handleReset = () => {
+    setFilters(initialFilters);
     setCurrentPage(1);
     fetchInvoices(1, "", {});
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchInvoices(currentPage, localSearch, {
-      product: filterProduct,
-      category: filterCategory,
-      startDate: filterStart,
-      endDate: filterEnd,
+    await fetchInvoices(currentPage, filters.search, {
+      product: filters.product === "all" ? "" : filters.product,
+      category: filters.category === "all" ? "" : filters.category,
+      type: filters.type === "all" ? "" : filters.type,
+      soldBy: filters.soldBy === "all" ? "" : filters.soldBy,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      sort: filters.sort,
     });
     setRefreshing(false);
   };
@@ -165,12 +135,18 @@ const InvoicesInner = () => {
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
+      fetchInvoices(page, filters.search, {
+        product: filters.product === "all" ? "" : filters.product,
+        category: filters.category === "all" ? "" : filters.category,
+        type: filters.type === "all" ? "" : filters.type,
+        soldBy: filters.soldBy === "all" ? "" : filters.soldBy,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        sort: filters.sort,
+      });
       setPageInput("");
     }
   };
-
-  const inputClass =
-    "w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 transition-colors";
 
   // Helper: build per-invoice tooltip data
   const getInvData = (inv: any) => {
@@ -225,120 +201,22 @@ const InvoicesInner = () => {
         </Button>
       </div>
 
-      {/* ── Filters ── */}
-      <div className="rounded-2xl border bg-card p-5 shadow-sm flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm flex items-center gap-1.5">
-            <Filter size={14} /> Filter Invoices
-          </h3>
-          {(filterProduct || filterCategory || filterStart || filterEnd || localSearch) && (
-            <button
-              onClick={clearFilters}
-              className="text-xs font-bold text-red-500 hover:underline"
-            >
-              Clear All
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Search Customer / Product
-            </span>
-            <div className="relative">
-              <Search
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                size={14}
-              />
-              <input
-                type="text"
-                placeholder="Name, phone, city or product..."
-                className={`${inputClass} pl-8`}
-                value={localSearch}
-                onChange={(e) => {
-                  setLocalSearch(e.target.value);
-                  setCurrentPage(1);
-                }}
-              />
-            </div>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Product
-            </span>
-            <select
-              className={inputClass}
-              value={filterProduct}
-              onChange={(e) => setFilterProduct(e.target.value)}
-            >
-              <option value="">All Products</option>
-              {products.map((p) => (
-                <option key={p._id} value={p._id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Category
-            </span>
-            <select
-              className={inputClass}
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="">All Categories</option>
-              {categories.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Start Date
-            </span>
-            <div className="relative">
-              <CalendarDays
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                size={14}
-              />
-              <input
-                type="date"
-                className={`${inputClass} pl-8`}
-                value={filterStart}
-                onChange={(e) => setFilterStart(e.target.value)}
-              />
-            </div>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              End Date
-            </span>
-            <div className="relative">
-              <CalendarDays
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                size={14}
-              />
-              <input
-                type="date"
-                className={`${inputClass} pl-8`}
-                value={filterEnd}
-                onChange={(e) => setFilterEnd(e.target.value)}
-              />
-            </div>
-          </label>
-        </div>
-
-        <div className="flex justify-end pt-2">
-          <Button size="sm" onClick={handleApplyFilters} className="gap-2">
-            <Search size={14} /> Apply Filters
-          </Button>
-        </div>
-      </div>
+      {/* ── Filter Bar Component ── */}
+      <InvoiceFilterBar
+        filters={filters}
+        onFilterChange={(newFilters) => {
+          setFilters(newFilters);
+          setCurrentPage(1);
+        }}
+        onReset={handleReset}
+        products={products}
+        categories={categories}
+        sellers={sellers}
+        totalInvoices={totalInvoices}
+        totalRevenue={totalAmountSum}
+        currency="PKR"
+        loading={loading}
+      />
 
       {/* ── Content ── */}
       {loading ? (
@@ -347,7 +225,7 @@ const InvoicesInner = () => {
         <div className="flex flex-col items-center py-20 text-muted-foreground gap-3 border rounded-2xl bg-card">
           <ReceiptText size={40} className="opacity-30" />
           <p className="text-sm font-medium">No invoices found matching criteria.</p>
-          <Button size="sm" variant="outline" onClick={clearFilters}>
+          <Button size="sm" variant="outline" onClick={handleReset}>
             Clear Filters
           </Button>
         </div>
