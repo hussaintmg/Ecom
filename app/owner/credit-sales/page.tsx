@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Download,
   RotateCcw,
   RefreshCw,
   Trash2,
