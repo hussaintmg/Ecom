@@ -19,7 +19,7 @@ export async function PUT(
     const updated = await Category.findByIdAndUpdate(
       id,
       { name, description, image },
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!updated) {

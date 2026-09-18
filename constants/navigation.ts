@@ -27,7 +27,16 @@ const isBarcodeEnabled = process.env.NEXT_PUBLIC_ENABLE_BARCODE === "true";
 export const ADMIN_NAV: NavItem[] = [
   { name: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { name: "Products", url: "/admin/products", icon: Package },
-  { name: "Inventory", url: "/admin/inventory", icon: Grid },
+  {
+    name: "Inventory",
+    url: "/admin/inventory",
+    icon: Grid,
+    dropdown: [
+      { name: "Stock Overview", url: "/admin/inventory" },
+      { name: "Stock Receiving", url: "/admin/inventory/receiving" },
+      { name: "Defective Inventory", url: "/admin/inventory/defective" },
+    ],
+  },
   ...(isBarcodeEnabled
     ? [{ name: "Barcode Scan", url: "/admin/barcode-scan", icon: ScanBarcode }]
     : []),
@@ -52,7 +61,16 @@ export const OWNER_NAV: NavItem[] = [
   },
   { name: "Products", url: "/owner/products", icon: Package },
   { name: "Categories", url: "/owner/categories", icon: Grid },
-  { name: "Inventory", url: "/owner/inventory", icon: Grid },
+  {
+    name: "Inventory",
+    url: "/owner/inventory",
+    icon: Grid,
+    dropdown: [
+      { name: "Stock Overview", url: "/owner/inventory" },
+      { name: "Stock Receiving", url: "/owner/inventory/receiving" },
+      { name: "Defective Inventory", url: "/owner/inventory/defective" },
+    ],
+  },
   ...(isBarcodeEnabled
     ? [{ name: "Barcode Scan", url: "/owner/barcode-scan", icon: ScanBarcode }]
     : []),

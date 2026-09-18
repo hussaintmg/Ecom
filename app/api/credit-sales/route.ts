@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
       const prevDoc = await Product.findOneAndUpdate(
         { _id: itemProductId, stock: { $gte: qty } },
         { $inc: { stock: -qty } },
-        { new: false }
+        { returnDocument: "before" }
       );
 
       if (!prevDoc) {

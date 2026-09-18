@@ -65,9 +65,10 @@ function getRateLimitForPath(pathname: string): number {
     pathname.startsWith("/api/invoices") ||
     pathname.startsWith("/api/credit-sales") ||
     pathname.startsWith("/api/orders") ||
-    pathname.startsWith("/api/stock")
+    pathname.startsWith("/api/stock") ||
+    pathname.startsWith("/api/inventory")
   ) {
-    return 30; // Mutation / transaction protection: 30 req/min
+    return 60; // Mutation / transaction / inventory protection: 60 req/min
   }
   if (
     pathname.startsWith("/api/products") ||

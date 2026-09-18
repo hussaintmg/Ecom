@@ -20,7 +20,7 @@ export async function PATCH(
     const enquiry = await Enquiry.findByIdAndUpdate(
       id,
       { status: body.status },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!enquiry) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

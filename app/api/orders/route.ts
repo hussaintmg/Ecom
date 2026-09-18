@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     // Simplified since models are imported at the top now
 
     for (const item of items) {
-      const p = await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } }, { new: true });
+      const p = await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } }, { returnDocument: "after" });
       if (!p) continue;
 
       // Stock log for initial order

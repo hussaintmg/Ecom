@@ -16,6 +16,10 @@ export interface StockLogEntry {
   /** Present on compensating entries created by an undo. */
   reversalOf?: string | null;
   performedBy?: { name: string; email: string };
+  movementType?: string;
+  fromState?: string;
+  toState?: string;
+  quantity?: number;
   createdAt: string;
 }
 

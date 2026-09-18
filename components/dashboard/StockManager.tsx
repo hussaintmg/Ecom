@@ -7,6 +7,7 @@ import {
   MAX_STOCK_CHANGE,
   isSuspiciousStockChange,
 } from "@/constants/stock";
+import Link from "next/link";
 import {
   RefreshCw,
   Plus,
@@ -18,6 +19,8 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
+  Inbox,
+  CheckCircle2,
 } from "lucide-react";
 
 type Mode = "add" | "remove" | "set";
@@ -91,6 +94,54 @@ const StockHistory = ({
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md whitespace-nowrap">
           <ShieldCheck size={9} /> Undone
+        </span>
+      );
+    if (log.movementType === "inspection_good")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Inspection Good
+        </span>
+      );
+    if (log.movementType === "inspection_defective")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Marked Defective
+        </span>
+      );
+    if (log.movementType === "repair_start")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Sent to Repair
+        </span>
+      );
+    if (log.movementType === "repair_success")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Repair Success
+        </span>
+      );
+    if (log.movementType === "repair_failed")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Repair Failed
+        </span>
+      );
+    if (log.movementType === "defective_sale")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Sold As-Is
+        </span>
+      );
+    if (log.movementType === "scrapped")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-zinc-600 dark:text-zinc-400 bg-zinc-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Scrapped
+        </span>
+      );
+    if (log.movementType === "receiving_pending")
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+          Pending Inspection
         </span>
       );
     return null;
@@ -300,6 +351,23 @@ const StockManager: React.FC<Props> = ({ productId, currentStock, onChanged }) =
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Live physical stock breakdown
+  const [stockBreakdown, setStockBreakdown] = useState<any>(null);
+
+  const fetchBreakdown = async () => {
+    try {
+      const res = await fetch(`/api/inventory/products/${productId}/summary`);
+      const data = await res.json();
+      if (data.success) {
+        setStockBreakdown(data.breakdown);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchBreakdown();
+  }, [productId, currentStock]);
+
   const parsed = amount.trim() === "" ? NaN : Number(amount);
   const isValidNumber = Number.isFinite(parsed) && Number.isInteger(parsed);
 
@@ -342,12 +410,12 @@ const StockManager: React.FC<Props> = ({ productId, currentStock, onChanged }) =
       setAmount("");
       setReason("");
       await onChanged();
+      await fetchBreakdown();
     }
   };
 
   const submit = () => {
     if (!ready) return;
-    // Double-check anything that looks like a typo before touching the stock.
     if (suspicious) {
       setConfirmOpen(true);
       return;
@@ -364,13 +432,13 @@ const StockManager: React.FC<Props> = ({ productId, currentStock, onChanged }) =
   const modeCopy: Record<Mode, { title: string; hint: string; button: string; classes: string }> = {
     add: {
       title: "Quantity to Add *",
-      hint: "New shipment, returned item, or a stock count that came out higher.",
+      hint: "Correction / count discrepancy (for new physical shipments, use Stock Receiving).",
       button: "Confirm Addition",
       classes: "bg-emerald-600 hover:bg-emerald-700 text-white",
     },
     remove: {
       title: "Quantity to Remove *",
-      hint: "Damaged, lost, or wrongly added stock that has to come back out.",
+      hint: "Administrative correction for mistakenly added or miscounted units.",
       button: "Confirm Removal",
       classes: "bg-red-600 hover:bg-red-700 text-white",
     },
@@ -384,10 +452,74 @@ const StockManager: React.FC<Props> = ({ productId, currentStock, onChanged }) =
 
   return (
     <div className="flex flex-col gap-6">
+      {/* ── Live Multi-State Physical Stock Breakdown ── */}
+      <div className="border rounded-2xl bg-card p-5 flex flex-col gap-3 shadow-sm border-primary/15">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+            <ShieldCheck size={16} className="text-primary" /> Physical Stock Status Breakdown
+          </h3>
+          <span className="text-xs font-black text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+            Total: {stockBreakdown ? stockBreakdown.totalPhysicalActiveStock : currentStock} units
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 bg-muted/40 p-2.5 rounded-xl text-center text-xs">
+          <div>
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">
+              Good / Sellable
+            </span>
+            <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+              {currentStock}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 block">
+              Pending QA
+            </span>
+            <span className="text-base font-black text-amber-600 dark:text-amber-400">
+              {stockBreakdown?.pendingStock || 0}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-red-600 dark:text-red-400 block">
+              Defective
+            </span>
+            <span className="text-base font-black text-red-600 dark:text-red-400">
+              {stockBreakdown?.defectiveStock || 0}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 block">
+              In Repair
+            </span>
+            <span className="text-base font-black text-sky-600 dark:text-sky-400">
+              {stockBreakdown?.repairingStock || 0}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-1 text-xs">
+          <p className="text-[11px] text-muted-foreground">
+            Received new inventory? It must enter inspection first.
+          </p>
+          <Link
+            href="/admin/inventory/receiving"
+            className="inline-flex items-center gap-1 font-bold text-amber-600 hover:text-amber-700 dark:text-amber-400 text-xs shrink-0"
+          >
+            <Inbox size={13} /> Go to Stock Receiving &rarr;
+          </Link>
+        </div>
+      </div>
+
       {/* ── Adjustment form ── */}
       <div className="border rounded-2xl bg-card p-6 flex flex-col gap-4 shadow-sm transition-colors hover:border-primary/20">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-bold text-base">Manage Stock</h2>
+          <div>
+            <h2 className="font-bold text-base">Administrative Stock Adjustment</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              For manual quantity corrections, inventory reconciliation, and audit fixes.
+            </p>
+          </div>
           <span
             className={`text-2xl font-black ${
               currentStock > 0 ? "text-emerald-600" : "text-red-600"

@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
     const { id, status } = await req.json();
-    const admin = await User.findByIdAndUpdate(id, { status }, { new: true });
+    const admin = await User.findByIdAndUpdate(id, { status }, { returnDocument: "after" });
     return NextResponse.json(admin);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
