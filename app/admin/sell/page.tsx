@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useProducts } from "@/context/ProductContext";
 import { useInvoices } from "@/context/InvoiceContext";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 import BillModal from "@/components/BillModal";
 import CustomerDetailsForm, {
   CustomerFormValue,
@@ -461,7 +462,13 @@ const SellInner = () => {
                         
                         {/* Product Info */}
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-sm truncate">{p.name}</h3>
+                          <div className="font-bold text-sm">
+                            <TooltipCell
+                              text={p.name}
+                              tooltipTitle="Product Name"
+                              maxChars={24}
+                            />
+                          </div>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             <p className="text-xs text-muted-foreground truncate">
                               Stock: 
@@ -703,12 +710,24 @@ const SellInner = () => {
                                   <Package size={14} className="text-muted-foreground" />
                                 )}
                               </div>
-                              <span className="font-semibold truncate max-w-[120px]">{item.product.name}</span>
+                              <div className="font-semibold max-w-[140px]">
+                                <TooltipCell
+                                  text={item.product.name}
+                                  tooltipTitle="Product Name"
+                                  maxChars={20}
+                                />
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-center font-bold">{item.quantity}</td>
                           <td className="px-4 py-3.5 text-right font-bold text-emerald-600">Rs. {item.salePrice.toLocaleString()}</td>
-                          <td className="px-4 py-3.5 text-muted-foreground truncate max-w-[100px]">{item.description}</td>
+                          <td className="px-4 py-3.5 text-muted-foreground max-w-[120px]">
+                            <TooltipCell
+                              text={item.description || "-"}
+                              tooltipTitle="Item Memo / Description"
+                              maxChars={18}
+                            />
+                          </td>
                           <td className="px-4 py-3.5 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <button

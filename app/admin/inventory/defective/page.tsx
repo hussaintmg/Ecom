@@ -22,6 +22,7 @@ import {
   Inbox,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 import BillModal from "@/components/BillModal";
 import CustomerDetailsForm, {
   CustomerFormValue,
@@ -1047,7 +1048,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-sm text-foreground truncate">{prod.name}</h4>
+                          <div className="font-bold text-sm text-foreground max-w-[240px]">
+                            <TooltipCell
+                              text={prod.name}
+                              tooltipTitle="Product Name"
+                              maxChars={28}
+                            />
+                          </div>
                           {getStatusBadge(item.status)}
                           <span className="text-[10px] bg-red-500/10 text-red-700 dark:text-red-400 font-bold px-2 py-0.5 rounded">
                             {item.defectReason}
@@ -1696,7 +1703,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                 <div className="p-3.5 rounded-xl bg-muted/40 border grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div>
                     <span className="text-muted-foreground block text-[10px] uppercase font-bold">Product</span>
-                    <span className="font-bold truncate block">{defectiveDetail.product?.name}</span>
+                    <div className="font-bold block max-w-[200px]">
+                      <TooltipCell
+                        text={defectiveDetail.product?.name || "Defective Product"}
+                        tooltipTitle="Product Name"
+                        maxChars={26}
+                      />
+                    </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[10px] uppercase font-bold">Defect Reason</span>
@@ -1815,9 +1828,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <div className="min-w-0">
-                          <p className="font-bold truncate text-foreground">
-                            {row.item.product?.name || "Defective Product"}
-                          </p>
+                          <div className="font-bold text-foreground max-w-[200px]">
+                            <TooltipCell
+                              text={row.item.product?.name || "Defective Product"}
+                              tooltipTitle="Product Name"
+                              maxChars={26}
+                            />
+                          </div>
                           <span className="text-[10px] text-muted-foreground">
                             Available: {row.item.availableDefectiveQuantity} • Rate: Rs. {row.unitPrice}
                           </span>
@@ -1950,9 +1967,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                     className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold truncate text-foreground">
-                        {row.item.product?.name || "Defective Product"}
-                      </p>
+                      <div className="font-bold text-foreground max-w-[200px]">
+                        <TooltipCell
+                          text={row.item.product?.name || "Defective Product"}
+                          tooltipTitle="Product Name"
+                          maxChars={26}
+                        />
+                      </div>
                       <span className="text-[10px] text-muted-foreground">
                         Available: {row.item.availableDefectiveQuantity} units • Reason: {row.item.defectReason}
                       </span>
@@ -2078,9 +2099,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                     className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold truncate text-foreground">
-                        {row.item.product?.name || "Defective Product"}
-                      </p>
+                      <div className="font-bold text-foreground max-w-[200px]">
+                        <TooltipCell
+                          text={row.item.product?.name || "Defective Product"}
+                          tooltipTitle="Product Name"
+                          maxChars={26}
+                        />
+                      </div>
                       <span className="text-[10px] text-muted-foreground">
                         Available: {row.item.availableDefectiveQuantity} units • Defect: {row.item.defectReason}
                       </span>

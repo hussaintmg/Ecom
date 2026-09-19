@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useStock, StockLogEntry } from "@/context/StockContext";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   MAX_STOCK_CHANGE,
@@ -203,7 +204,12 @@ const StockHistory = ({
                   </td>
                   <td className="px-4 py-3 max-w-[220px]">
                     <div className="flex flex-col gap-1">
-                      <span className="line-clamp-2 break-words">{log.description}</span>
+                      <TooltipCell
+                        text={log.description}
+                        tooltipTitle="Log Description"
+                        maxChars={45}
+                        className="text-xs break-words"
+                      />
                       {statusBadge(log)}
                     </div>
                   </td>

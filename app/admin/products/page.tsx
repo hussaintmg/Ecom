@@ -9,6 +9,7 @@ import ProductForm from "@/components/dashboard/ProductForm";
 import Button from "@/components/ui/Button";
 import BarcodePrintModal from "@/components/barcode/BarcodePrintModal";
 import SingleBarcodeModal from "@/components/barcode/SingleBarcodeModal";
+import TooltipCell from "@/components/ui/TooltipCell";
 import {
   Plus,
   Trash2,
@@ -515,10 +516,20 @@ const ProductsInner = () => {
                       <p className="text-xs text-muted-foreground">
                         #{(currentPage - 1) * 10 + idx + 1}
                       </p>
-                      <h3 className="font-semibold text-sm truncate">{p.name}</h3>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {getCategoryName(p) || "—"}
-                      </p>
+                      <div className="font-semibold text-sm">
+                        <TooltipCell
+                          text={p.name}
+                          tooltipTitle="Product Name"
+                          maxChars={28}
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        <TooltipCell
+                          text={getCategoryName(p) || "—"}
+                          tooltipTitle="Category"
+                          maxChars={24}
+                        />
+                      </div>
                       <div className="mt-2">
                         <StockBadge stock={p.stock} />
                       </div>
@@ -639,9 +650,19 @@ const ProductsInner = () => {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 font-semibold">{p.name}</td>
-                    <td className="px-6 py-4 text-muted-foreground">
-                      {getCategoryName(p) || "—"}
+                    <td className="px-6 py-4 font-semibold max-w-[240px]">
+                      <TooltipCell
+                        text={p.name}
+                        tooltipTitle="Product Name"
+                        maxChars={32}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground max-w-[180px]">
+                      <TooltipCell
+                        text={getCategoryName(p) || "—"}
+                        tooltipTitle="Category"
+                        maxChars={24}
+                      />
                     </td>
                     <td className="px-6 py-4 font-bold text-emerald-600">
                       Rs. {(p.price ?? 0).toLocaleString()}

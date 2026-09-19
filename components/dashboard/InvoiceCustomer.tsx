@@ -15,6 +15,7 @@ import {
   UserCog,
   Package,
 } from "lucide-react";
+import TooltipCell from "@/components/ui/TooltipCell";
 
 export interface InvoiceCustomerData {
   customerName?: string;
@@ -270,7 +271,13 @@ export const CustomerDetailsModal: React.FC<ModalProps> = ({
               {customerInitials(name)}
             </span>
             <div className="min-w-0">
-              <h3 className="font-black text-base truncate">{name}</h3>
+              <div className="font-black text-base">
+                <TooltipCell
+                  text={name}
+                  tooltipTitle="Customer Name"
+                  maxChars={28}
+                />
+              </div>
               <p className="text-[11px] text-muted-foreground">
                 Customer on this {invoice.type === "Repair" ? "repair bill" : "invoice"}
               </p>
@@ -362,9 +369,13 @@ export const CustomerDetailsModal: React.FC<ModalProps> = ({
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                   <UserCog size={11} /> Sold By
                 </p>
-                <p className="text-sm font-semibold mt-0.5 truncate">
-                  {invoice.soldBy?.name || "Unknown"}
-                </p>
+                <div className="text-sm font-semibold mt-0.5">
+                  <TooltipCell
+                    text={invoice.soldBy?.name || "Unknown"}
+                    tooltipTitle="Sold By"
+                    maxChars={20}
+                  />
+                </div>
               </div>
               <div className="rounded-xl border p-3 bg-emerald-500/5 border-emerald-500/20">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
@@ -392,13 +403,20 @@ export const CustomerDetailsModal: React.FC<ModalProps> = ({
                     className="rounded-xl border px-3.5 py-2.5 flex items-start justify-between gap-3 hover:bg-muted/40 transition-colors"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">
-                        {p.product?.name || "Deleted Product"}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {p.category?.name || "Uncategorized"}
-                        {p.description ? ` • ${p.description}` : ""}
-                      </p>
+                      <div className="text-sm font-semibold">
+                        <TooltipCell
+                          text={p.product?.name || "Deleted Product"}
+                          tooltipTitle="Product Name"
+                          maxChars={30}
+                        />
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <TooltipCell
+                          text={`${p.category?.name || "Uncategorized"}${p.description ? ` • ${p.description}` : ""}`}
+                          tooltipTitle="Item Details"
+                          maxChars={35}
+                        />
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-emerald-600 whitespace-nowrap">

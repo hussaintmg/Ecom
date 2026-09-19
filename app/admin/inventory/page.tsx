@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 
 interface ProductInventoryItem {
   _id: string;
@@ -374,9 +375,13 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
                               )}
                             </div>
                             <div className="min-w-0">
-                              <h4 className="font-bold text-sm text-foreground truncate max-w-[220px]">
-                                {p.name}
-                              </h4>
+                              <div className="font-bold text-sm text-foreground max-w-[220px]">
+                                <TooltipCell
+                                  text={p.name}
+                                  tooltipTitle="Product Name"
+                                  maxChars={26}
+                                />
+                              </div>
                               {p.barcode && (
                                 <p className="text-[10px] text-muted-foreground font-mono">
                                   SKU: {p.barcode}
@@ -385,8 +390,12 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-xs text-muted-foreground">
-                          {p.category?.name || "Uncategorized"}
+                        <td className="px-4 py-3.5 text-xs text-muted-foreground max-w-[150px]">
+                          <TooltipCell
+                            text={p.category?.name || "Uncategorized"}
+                            tooltipTitle="Category"
+                            maxChars={20}
+                          />
                         </td>
                         {/* Good / Sellable */}
                         <td className="px-4 py-3.5 text-center">
@@ -466,11 +475,21 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
                         )}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-bold text-sm text-foreground truncate">{p.name}</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {p.category?.name || "Uncategorized"}
-                          {p.barcode && ` • ${p.barcode}`}
-                        </p>
+                        <div className="font-bold text-sm text-foreground">
+                          <TooltipCell
+                            text={p.name}
+                            tooltipTitle="Product Name"
+                            maxChars={28}
+                          />
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <TooltipCell
+                            text={p.category?.name || "Uncategorized"}
+                            tooltipTitle="Category"
+                            maxChars={20}
+                          />
+                          {p.barcode && <span className="font-mono text-[10px] opacity-75">• {p.barcode}</span>}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right shrink-0">

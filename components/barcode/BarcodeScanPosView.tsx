@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import BarcodeScannerView from "@/components/barcode/BarcodeScannerView";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 
 interface CartItem {
   product: any;
@@ -421,7 +422,13 @@ const BarcodeScanPosView: React.FC<BarcodeScanPosViewProps> = ({ role }) => {
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-sm truncate">{item.name}</h4>
+                          <div className="font-bold text-sm">
+                            <TooltipCell
+                              text={item.name}
+                              tooltipTitle="Product Name"
+                              maxChars={26}
+                            />
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">
                               {item.barcode}

@@ -450,21 +450,36 @@ const InvoicesInner = () => {
                         </span>
                       )}
                       {inv.customerEmail && (
-                        <a
-                          href={`mailto:${inv.customerEmail}`}
-                          className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate"
-                        >
-                          <Mail size={10} /> {inv.customerEmail}
-                        </a>
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full">
+                          <Mail size={10} className="shrink-0" />
+                          <TooltipCell
+                            text={inv.customerEmail}
+                            tooltipLines={[inv.customerEmail]}
+                            tooltipTitle="Email"
+                            maxChars={24}
+                          />
+                        </span>
                       )}
                       {inv.customerAddress && (
-                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate">
-                          <MapPin size={10} /> {inv.customerAddress}
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full">
+                          <MapPin size={10} className="shrink-0" />
+                          <TooltipCell
+                            text={inv.customerAddress}
+                            tooltipLines={[inv.customerAddress]}
+                            tooltipTitle="Customer Address"
+                            maxChars={24}
+                          />
                         </span>
                       )}
                       {inv.customerNote && (
-                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full truncate">
-                          <StickyNote size={10} /> {inv.customerNote}
+                        <span className="inline-flex items-center gap-1 text-[11px] bg-muted px-2 py-1 rounded-full text-muted-foreground max-w-full">
+                          <StickyNote size={10} className="shrink-0" />
+                          <TooltipCell
+                            text={inv.customerNote}
+                            tooltipLines={[inv.customerNote]}
+                            tooltipTitle="Customer Note"
+                            maxChars={24}
+                          />
                         </span>
                       )}
                     </div>

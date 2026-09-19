@@ -20,6 +20,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import TooltipCell from "@/components/ui/TooltipCell";
 import toast from "@/utils/toast";
 
 const DEFECT_REASONS = [
@@ -643,7 +644,16 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                           Total Qty: <strong className="text-foreground">{totalQtyReceived} units</strong>
                         </span>
                         {r.receivedBy && <span>By: {r.receivedBy.name}</span>}
-                        {r.notes && <span className="italic truncate max-w-[200px]">Note: &quot;{r.notes}&quot;</span>}
+                        {r.notes && (
+                          <span className="italic max-w-[200px]">
+                            <TooltipCell
+                              text={`Note: "${r.notes}"`}
+                              tooltipLines={[r.notes]}
+                              tooltipTitle="Receiving Notes"
+                              maxChars={26}
+                            />
+                          </span>
+                        )}
                       </div>
 
                       {/* Mini progress bar */}
@@ -832,7 +842,13 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-bold text-xs truncate">{p.name}</p>
+                          <div className="font-bold text-xs max-w-[200px]">
+                            <TooltipCell
+                              text={p.name}
+                              tooltipTitle="Product Name"
+                              maxChars={24}
+                            />
+                          </div>
                           <p className="text-[10px] text-muted-foreground">
                             Current Sellable: {p.stock} units {isBarcodeEnabled && p.barcode ? `• SKU: ${p.barcode}` : ""}
                           </p>
@@ -874,7 +890,13 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                             )}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-xs truncate">{item.product.name}</p>
+                            <div className="font-bold text-xs max-w-[200px]">
+                              <TooltipCell
+                                text={item.product.name}
+                                tooltipTitle="Product Name"
+                                maxChars={24}
+                              />
+                            </div>
                             <p className="text-[10px] text-muted-foreground">
                               Sellable on hand: {item.product.stock}
                             </p>
@@ -1052,7 +1074,13 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                               )}
                             </div>
                             <div className="min-w-0">
-                              <h5 className="font-bold text-sm text-foreground truncate">{prod.name}</h5>
+                              <div className="font-bold text-sm text-foreground max-w-[240px]">
+                                <TooltipCell
+                                  text={prod.name}
+                                  tooltipTitle="Product Name"
+                                  maxChars={28}
+                                />
+                              </div>
                               <p className="text-xs text-muted-foreground">
                                 Current Sellable: {prod.stock} {prod.barcode ? `• SKU: ${prod.barcode}` : ""}
                               </p>
