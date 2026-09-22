@@ -59,6 +59,24 @@ const InventoryReceiptSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
     },
+    vendor: {
+      type: String,
+      required: true,
+      default: "Direct Supplier",
+      trim: true,
+      index: true,
+    },
+    origin: {
+      type: String,
+      default: "General",
+      trim: true,
+      index: true,
+    },
+    vendorContact: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     notes: {
       type: String,
       default: "",
@@ -79,6 +97,7 @@ const InventoryReceiptSchema = new Schema(
   { timestamps: true }
 );
 
+InventoryReceiptSchema.index({ vendor: 1, origin: 1 });
 InventoryReceiptSchema.index({ "items.product": 1 });
 InventoryReceiptSchema.index({ createdAt: -1 });
 

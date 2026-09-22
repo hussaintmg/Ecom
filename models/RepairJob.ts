@@ -33,6 +33,23 @@ const RepairJobSchema = new Schema(
       type: String,
       default: "",
       trim: true,
+      index: true,
+    },
+    repairInvoiceNo: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+    vendorPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    vendorAddress: {
+      type: String,
+      default: "",
+      trim: true,
     },
     estimatedCost: {
       type: Number,
@@ -48,6 +65,10 @@ const RepairJobSchema = new Schema(
       type: Date,
       default: Date.now,
       index: true,
+    },
+    expectedReturnDate: {
+      type: Date,
+      default: null,
     },
     completionDate: {
       type: Date,

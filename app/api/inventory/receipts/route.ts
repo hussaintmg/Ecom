@@ -3,7 +3,7 @@ import connectDB from "@/utils/db";
 import { getUserFromRequest } from "@/utils/authHelpers";
 import InventoryReceipt from "@/models/InventoryReceipt";
 import InventoryService from "@/services/inventoryService";
-import "@/models/Product";
+import Product from "@/models/Product";
 import "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +29,20 @@ export async function GET(req: NextRequest) {
     }
     if (search) {
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const matchingProductIds = await Product.find({
+        $or: [
+          { name: { $regex: escaped, $options: "i" } },
+          { description: { $regex: escaped, $options: "i" } },
+          { barcode: { $regex: escaped, $options: "i" } },
+        ],
+      }).select("_id");
+
       query.$or = [
         { receiptNumber: { $regex: escaped, $options: "i" } },
+        { vendor: { $regex: escaped, $options: "i" } },
+        { origin: { $regex: escaped, $options: "i" } },
         { notes: { $regex: escaped, $options: "i" } },
+        { "items.product": { $in: matchingProductIds.map((p) => p._id) } },
       ];
     }
 

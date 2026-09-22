@@ -60,12 +60,22 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
   // New Receiving Modal state
   const [newModalOpen, setNewModalOpen] = useState(false);
   const [receivingRef, setReceivingRef] = useState("");
+  const [receivingVendor, setReceivingVendor] = useState("");
+  const [receivingOrigin, setReceivingOrigin] = useState("Taiwan");
+  const [receivingVendorContact, setReceivingVendorContact] = useState("");
   const [receivingNotes, setReceivingNotes] = useState("");
   const [receivingDate, setReceivingDate] = useState("");
   const [receivingItems, setReceivingItems] = useState<
     { productId: string; product: any; quantity: number; unitCost: number }[]
   >([]);
   const [submittingReceive, setSubmittingReceive] = useState(false);
+  const [expandedShipmentIds, setExpandedShipmentIds] = useState<string[]>([]);
+
+  const toggleExpandShipment = (id: string) => {
+    setExpandedShipmentIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   // Product selector inside New Receiving Modal
   const [productSearch, setProductSearch] = useState("");
@@ -197,6 +207,9 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     setReceivingRef(`REC-${dateStr}-${randomSuffix}`);
+    setReceivingVendor("");
+    setReceivingOrigin("Taiwan");
+    setReceivingVendorContact("");
     setReceivingDate(now.toISOString().slice(0, 10));
     setReceivingNotes("");
     setReceivingItems([]);
@@ -235,6 +248,10 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
 
   const handleSubmitReceiving = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!receivingVendor.trim()) {
+      toast.error("Please enter a Vendor / Supplier name.");
+      return;
+    }
     if (receivingItems.length === 0) {
       toast.error("Please add at least one product to the receiving shipment.");
       return;
@@ -255,6 +272,9 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           referenceNumber: receivingRef.trim(),
+          vendor: receivingVendor.trim(),
+          origin: receivingOrigin.trim() || "Taiwan",
+          vendorContact: receivingVendorContact.trim(),
           receivedAt: receivingDate,
           notes: receivingNotes.trim(),
           items: receivingItems.map((i) => ({
@@ -500,7 +520,7 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <input
               className="w-full rounded-xl border bg-background pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/40 transition-all"
-              placeholder="Search by Reference # or notes..."
+              placeholder="Search by vendor, origin (Taiwan, Goa), specs (220, 440), receipt #..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -627,6 +647,12 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                           {r.receiptNumber}
                         </span>
                         {getStatusBadge(r.status)}
+                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          Vendor: {r.vendor || "Direct Supplier"}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                          Origin: {r.origin || "General"}
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           {new Date(r.receivedAt || r.createdAt).toLocaleDateString("en-PK", {
                             day: "numeric",
@@ -674,6 +700,84 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                           {inspectedPercent}% QA Done
                         </span>
                       </div>
+
+                      {/* Direct Inline Product & Spec Preview */}
+                      {r.items && r.items.length > 0 && (
+                        <div className="mt-3.5 pt-3 border-t border-border/50">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                              <Package size={12} /> Received Items & Specifications
+                            </span>
+                            {r.items.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandShipment(r._id)}
+                                className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                              >
+                                {expandedShipmentIds.includes(r._id)
+                                  ? "Show Less"
+                                  : `View All ${r.items.length} Items`}
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {(expandedShipmentIds.includes(r._id)
+                              ? r.items
+                              : r.items.slice(0, 2)
+                            ).map((it: any, idx: number) => {
+                              const prodName = it.product?.name || "Product";
+                              const is220 = prodName.includes("220") || it.product?.description?.includes("220");
+                              const is440 = prodName.includes("440") || it.product?.description?.includes("440");
+
+                              return (
+                                <div
+                                  key={it._id || idx}
+                                  className="flex items-center justify-between gap-3 bg-muted/40 hover:bg-muted/70 px-3 py-1.5 rounded-xl text-xs transition-colors"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-6 h-6 rounded-md bg-muted border overflow-hidden shrink-0 flex items-center justify-center">
+                                      {it.product?.images?.[0]?.url ? (
+                                        <img src={it.product.images[0].url} alt={prodName} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <Package size={12} className="text-muted-foreground" />
+                                      )}
+                                    </div>
+                                    <span className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-xs">
+                                      {prodName}
+                                    </span>
+                                    {is220 && (
+                                      <span className="px-1.5 py-0.2 text-[10px] font-black rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                        220V
+                                      </span>
+                                    )}
+                                    {is440 && (
+                                      <span className="px-1.5 py-0.2 text-[10px] font-black rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                                        440V
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 font-mono shrink-0">
+                                    <span className="text-muted-foreground">
+                                      Qty: <strong className="text-foreground">{it.qtyReceived}</strong>
+                                    </span>
+                                    {it.qtyPending > 0 ? (
+                                      <span className="text-amber-600 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                                        {it.qtyPending} Pending
+                                      </span>
+                                    ) : (
+                                      <span className="text-emerald-600 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                                        QA Done
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -779,6 +883,48 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
             <form onSubmit={handleSubmitReceiving} className="flex flex-col gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                  <span>Vendor / Supplier Name *</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Taiwan Industrial, ABC Mills, etc."
+                    value={receivingVendor}
+                    onChange={(e) => setReceivingVendor(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                  <span>Origin / Source *</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Taiwan, Goa, Local"
+                    value={receivingOrigin}
+                    onChange={(e) => setReceivingOrigin(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {["Taiwan", "Goa", "Local", "China", "Japan"].map((org) => (
+                      <button
+                        key={org}
+                        type="button"
+                        onClick={() => setReceivingOrigin(org)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                          receivingOrigin.toLowerCase() === org.toLowerCase()
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                        }`}
+                      >
+                        {org}
+                      </button>
+                    ))}
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
                   <span>Reference # *</span>
                   <input
                     type="text"
@@ -800,6 +946,17 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                   />
                 </label>
               </div>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Vendor Contact / Phone (Optional)</span>
+                <input
+                  type="text"
+                  placeholder="e.g. +92 300 1234567"
+                  value={receivingVendorContact}
+                  onChange={(e) => setReceivingVendorContact(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
 
               {/* Product Selector from Existing Master Catalog */}
               <div className="flex flex-col gap-1.5 relative">

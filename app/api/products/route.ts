@@ -74,12 +74,13 @@ export async function GET(req: NextRequest) {
     // Search
     // =========================
     if (search) {
-      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-      query.name = {
-        $regex: `\\b${escapedSearch}`,
-        $options: "i",
-      };
+      query.$or = [
+        { name: { $regex: escapedSearch, $options: "i" } },
+        { description: { $regex: escapedSearch, $options: "i" } },
+        { barcode: { $regex: escapedSearch, $options: "i" } },
+      ];
     }
 
     // =========================

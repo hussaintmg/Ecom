@@ -245,17 +245,44 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               padding: "12px 16px",
               borderRadius: "8px",
               border: "1px solid #e5e7eb",
+              gap: "16px",
+              flexWrap: "wrap",
             }}
           >
             <div>
-              <span style={{ fontWeight: "600", color: "#4b5563" }}>
-                {isCredit ? "Receipt No:" : "Invoice No:"}
-              </span>{" "}
-              <span style={{ color: "#111827" }}>{invoiceNo}</span>
+              <div style={{ fontWeight: "700", color: "#111827", fontSize: "13px", marginBottom: "4px" }}>
+                {data.type === "Repair" ? "Repair Vendor / Workshop:" : isCredit ? "Customer (Credit):" : "Billed To / Customer:"}
+              </div>
+              <div style={{ fontWeight: "600", color: "#1f2937" }}>
+                {data.customerName || (data.type === "Repair" ? "Repair Vendor" : "Walk-in Customer")}
+              </div>
+              {data.customerPhone && (
+                <div style={{ color: "#4b5563" }}>Phone: {data.customerPhone}</div>
+              )}
+              {(data.customerAddress || data.customerCity) && (
+                <div style={{ color: "#4b5563" }}>
+                  {[data.customerAddress, data.customerCity].filter(Boolean).join(", ")}
+                </div>
+              )}
             </div>
-            <div>
-              <span style={{ fontWeight: "600", color: "#4b5563" }}>Date:</span>{" "}
-              <span style={{ color: "#111827" }}>{date}</span>
+
+            <div style={{ textAlign: "right" }}>
+              <div>
+                <span style={{ fontWeight: "600", color: "#4b5563" }}>
+                  {data.type === "Repair" ? "Challan / Inv No:" : isCredit ? "Receipt No:" : "Invoice No:"}
+                </span>{" "}
+                <span style={{ color: "#111827", fontWeight: "700" }}>{invoiceNo}</span>
+              </div>
+              <div>
+                <span style={{ fontWeight: "600", color: "#4b5563" }}>Date:</span>{" "}
+                <span style={{ color: "#111827" }}>{date}</span>
+              </div>
+              {data.sellerName && (
+                <div>
+                  <span style={{ fontWeight: "600", color: "#4b5563" }}>Issued By:</span>{" "}
+                  <span style={{ color: "#111827" }}>{data.sellerName}</span>
+                </div>
+              )}
             </div>
           </div>
 
