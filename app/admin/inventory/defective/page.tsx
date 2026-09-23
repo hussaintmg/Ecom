@@ -20,6 +20,8 @@ import {
   X,
   Eye,
   Inbox,
+  RotateCcw,
+  PackageCheck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
@@ -52,6 +54,8 @@ const DEFECT_STATUSES = [
   "Repair Failed",
   "Sold",
   "Scrapped",
+  "Returned to Receiving",
+  "Moved to Good Stock",
 ];
 
 export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: string }) => {
@@ -61,6 +65,8 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [totalAllRecords, setTotalAllRecords] = useState(0);
+  const [pageInput, setPageInput] = useState("");
 
   // Filters
   const [search, setSearch] = useState("");
@@ -72,6 +78,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
 
   // Overall summary
   const [summary, setSummary] = useState({
+    totalAvailable: 0,
+    totalRepairing: 0,
+    totalSold: 0,
+    totalScrapped: 0,
+    totalRepairCostSpent: 0,
+  });
+  const [filteredSummary, setFilteredSummary] = useState({
     totalAvailable: 0,
     totalRepairing: 0,
     totalSold: 0,
@@ -138,6 +151,34 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   const [bulkTechnician, setBulkTechnician] = useState("");
   const [submittingBulkRepair, setSubmittingBulkRepair] = useState(false);
 
+  // 6. Single Move to Good Modal State
+  const [moveToGoodModalOpen, setMoveToGoodModalOpen] = useState(false);
+  const [moveToGoodQty, setMoveToGoodQty] = useState("1");
+  const [moveToGoodNotes, setMoveToGoodNotes] = useState("");
+  const [submittingMoveToGood, setSubmittingMoveToGood] = useState(false);
+
+  // 7. Single Return to Receiving Modal State
+  const [returnReceivingModalOpen, setReturnReceivingModalOpen] = useState(false);
+  const [returnReceivingQty, setReturnReceivingQty] = useState("1");
+  const [returnReceivingNotes, setReturnReceivingNotes] = useState("");
+  const [submittingReturnReceiving, setSubmittingReturnReceiving] = useState(false);
+
+  // Bulk Move to Good Modal State
+  const [bulkMoveToGoodModalOpen, setBulkMoveToGoodModalOpen] = useState(false);
+  const [bulkMoveToGoodItems, setBulkMoveToGoodItems] = useState<
+    { defectiveId: string; item: any; quantity: number; notes: string }[]
+  >([]);
+  const [bulkMoveToGoodNotes, setBulkMoveToGoodNotes] = useState("");
+  const [submittingBulkMoveToGood, setSubmittingBulkMoveToGood] = useState(false);
+
+  // Bulk Return to Receiving Modal State
+  const [bulkReturnReceivingModalOpen, setBulkReturnReceivingModalOpen] = useState(false);
+  const [bulkReturnReceivingItems, setBulkReturnReceivingItems] = useState<
+    { defectiveId: string; item: any; quantity: number; notes: string }[]
+  >([]);
+  const [bulkReturnReceivingNotes, setBulkReturnReceivingNotes] = useState("");
+  const [submittingBulkReturnReceiving, setSubmittingBulkReturnReceiving] = useState(false);
+
   // Bill Modal for printed defective sale bill
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [billData, setBillData] = useState<any>(null);
@@ -187,7 +228,10 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
           setDefectiveList(data.defectiveList || []);
           setTotalPages(data.totalPages || 1);
           setTotalRecords(data.totalRecords || 0);
+          setTotalAllRecords(data.totalAllRecords || data.totalRecords || 0);
           if (data.summary) setSummary(data.summary);
+          if (data.filteredSummary) setFilteredSummary(data.filteredSummary);
+          else if (data.summary) setFilteredSummary(data.summary);
         }
       } catch (err) {
         console.error("Error fetching defective inventory:", err);
@@ -202,6 +246,92 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   useEffect(() => {
     fetchDefectiveList(currentPage);
   }, [currentPage, fetchDefectiveList]);
+
+  // Action: Open Move to Good
+  const handleOpenMoveToGood = (item: any) => {
+    setActiveDefective(item);
+    setMoveToGoodQty(item.availableDefectiveQuantity.toString());
+    setMoveToGoodNotes("");
+    setMoveToGoodModalOpen(true);
+  };
+
+  const handleConfirmMoveToGood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDefective) return;
+
+    const qty = Number(moveToGoodQty);
+    if (qty <= 0 || qty > activeDefective.availableDefectiveQuantity) {
+      toast.error(`Quantity must be between 1 and ${activeDefective.availableDefectiveQuantity}`);
+      return;
+    }
+
+    setSubmittingMoveToGood(true);
+    try {
+      const res = await fetch(`/api/inventory/defective/${activeDefective._id}/move-to-good`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quantity: qty,
+          notes: moveToGoodNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        toast.success(data.message || `${qty} unit(s) moved to good sellable stock!`);
+        setMoveToGoodModalOpen(false);
+        fetchDefectiveList(currentPage, false);
+      } else {
+        toast.error(data.error || "Failed to move stock to good");
+      }
+    } catch {
+      toast.error("Network error moving stock to good");
+    } finally {
+      setSubmittingMoveToGood(false);
+    }
+  };
+
+  // Action: Open Return to Receiving
+  const handleOpenReturnReceiving = (item: any) => {
+    setActiveDefective(item);
+    setReturnReceivingQty(item.availableDefectiveQuantity.toString());
+    setReturnReceivingNotes("");
+    setReturnReceivingModalOpen(true);
+  };
+
+  const handleConfirmReturnReceiving = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDefective) return;
+
+    const qty = Number(returnReceivingQty);
+    if (qty <= 0 || qty > activeDefective.availableDefectiveQuantity) {
+      toast.error(`Quantity must be between 1 and ${activeDefective.availableDefectiveQuantity}`);
+      return;
+    }
+
+    setSubmittingReturnReceiving(true);
+    try {
+      const res = await fetch(`/api/inventory/defective/${activeDefective._id}/return-to-receiving`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quantity: qty,
+          notes: returnReceivingNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        toast.success(data.message || `${qty} unit(s) returned to stock receiving!`);
+        setReturnReceivingModalOpen(false);
+        fetchDefectiveList(currentPage, false);
+      } else {
+        toast.error(data.error || "Failed to return stock to receiving");
+      }
+    } catch {
+      toast.error("Network error returning stock to receiving");
+    } finally {
+      setSubmittingReturnReceiving(false);
+    }
+  };
 
   // Action: Open Send to Repair
   const handleOpenRepair = (item: any) => {
@@ -573,6 +703,114 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
     }
   };
 
+  // Open Bulk Move to Good
+  const handleOpenBulkMoveToGood = () => {
+    const selected = defectiveList.filter(
+      (d) => selectedDefectiveIds.includes(d._id) && d.availableDefectiveQuantity > 0
+    );
+    if (selected.length === 0) {
+      toast.error("None of the selected items have available defective stock to move.");
+      return;
+    }
+    const rows = selected.map((item) => ({
+      defectiveId: item._id,
+      item,
+      quantity: item.availableDefectiveQuantity,
+      notes: "",
+    }));
+    setBulkMoveToGoodItems(rows);
+    setBulkMoveToGoodNotes("");
+    setBulkMoveToGoodModalOpen(true);
+  };
+
+  const handleConfirmBulkMoveToGood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (bulkMoveToGoodItems.length === 0) return;
+
+    setSubmittingBulkMoveToGood(true);
+    try {
+      const res = await fetch("/api/inventory/defective/bulk-move-to-good", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: bulkMoveToGoodItems.map((r) => ({
+            defectiveId: r.defectiveId,
+            quantity: r.quantity,
+            notes: r.notes.trim() || bulkMoveToGoodNotes.trim(),
+          })),
+          notes: bulkMoveToGoodNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        toast.success(data.message || "Bulk move to good stock completed successfully!");
+        setBulkMoveToGoodModalOpen(false);
+        setSelectedDefectiveIds([]);
+        fetchDefectiveList(currentPage, false);
+      } else {
+        toast.error(data.error || "Failed to bulk move to good stock");
+      }
+    } catch {
+      toast.error("Network error during bulk move to good stock");
+    } finally {
+      setSubmittingBulkMoveToGood(false);
+    }
+  };
+
+  // Open Bulk Return to Receiving
+  const handleOpenBulkReturnReceiving = () => {
+    const selected = defectiveList.filter(
+      (d) => selectedDefectiveIds.includes(d._id) && d.availableDefectiveQuantity > 0
+    );
+    if (selected.length === 0) {
+      toast.error("None of the selected items have available defective stock to return.");
+      return;
+    }
+    const rows = selected.map((item) => ({
+      defectiveId: item._id,
+      item,
+      quantity: item.availableDefectiveQuantity,
+      notes: "",
+    }));
+    setBulkReturnReceivingItems(rows);
+    setBulkReturnReceivingNotes("");
+    setBulkReturnReceivingModalOpen(true);
+  };
+
+  const handleConfirmBulkReturnReceiving = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (bulkReturnReceivingItems.length === 0) return;
+
+    setSubmittingBulkReturnReceiving(true);
+    try {
+      const res = await fetch("/api/inventory/defective/bulk-return-to-receiving", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: bulkReturnReceivingItems.map((r) => ({
+            defectiveId: r.defectiveId,
+            quantity: r.quantity,
+            notes: r.notes.trim() || bulkReturnReceivingNotes.trim(),
+          })),
+          notes: bulkReturnReceivingNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        toast.success(data.message || "Bulk return to receiving completed successfully!");
+        setBulkReturnReceivingModalOpen(false);
+        setSelectedDefectiveIds([]);
+        fetchDefectiveList(currentPage, false);
+      } else {
+        toast.error(data.error || "Failed to bulk return to receiving");
+      }
+    } catch {
+      toast.error("Network error during bulk return to receiving");
+    } finally {
+      setSubmittingBulkReturnReceiving(false);
+    }
+  };
+
   // Action: Open Sell As-Is Modal
   const handleOpenSell = (item: any) => {
     setActiveDefective(item);
@@ -743,6 +981,8 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
       "Repair Failed": "bg-red-500/10 text-red-600 dark:text-red-400",
       "Sold": "bg-purple-500/10 text-purple-600 dark:text-purple-400",
       "Scrapped": "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+      "Returned to Receiving": "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+      "Moved to Good Stock": "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
       "Closed": "bg-muted text-muted-foreground",
     };
     return (
@@ -750,6 +990,23 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
         {status}
       </span>
     );
+  };
+
+  const pageRecordsCount = defectiveList.length;
+  const startRecord = totalRecords > 0 ? (currentPage - 1) * 10 + 1 : 0;
+  const endRecord = Math.min(currentPage * 10, totalRecords);
+
+  const pageAvailableUnits = defectiveList.reduce((acc, it) => acc + (it.availableDefectiveQuantity || 0), 0);
+  const pageRepairingUnits = defectiveList.reduce((acc, it) => acc + (it.quantityRepairing || 0), 0);
+  const pageSoldUnits = defectiveList.reduce((acc, it) => acc + (it.quantitySold || 0), 0);
+  const pageScrappedUnits = defectiveList.reduce((acc, it) => acc + (it.quantityScrapped || 0), 0);
+  const pageTotalActiveUnits = pageAvailableUnits + pageRepairingUnits;
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      setPageInput("");
+    }
   };
 
   return (
@@ -769,7 +1026,21 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
           <div>
             <h1 className="text-2xl font-black tracking-tight">Defective Inventory Management</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Manage defective batches: send to repair, complete repairs, sell as-is, or scrap
+              {loading && defectiveList.length === 0 ? (
+                "Loading defective inventory..."
+              ) : totalRecords > 0 ? (
+                <>
+                  Showing <strong className="text-foreground">{startRecord}–{endRecord}</strong> of{" "}
+                  <strong className="text-foreground">{totalRecords.toLocaleString()}</strong> records
+                  {" "}(<span className="font-semibold text-red-600 dark:text-red-400">{pageRecordsCount} on this page</span>
+                  {totalAllRecords > 0 && totalAllRecords !== totalRecords
+                    ? ` • ${totalAllRecords.toLocaleString()} total all-time`
+                    : ""}
+                  ) • Page <strong className="text-foreground">{currentPage}</strong> of <strong className="text-foreground">{totalPages}</strong>
+                </>
+              ) : (
+                "No defective records found matching filters"
+              )}
             </p>
           </div>
         </div>
@@ -847,6 +1118,29 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
             Rs. {loading ? "..." : summary.totalRepairCostSpent.toLocaleString()}
           </div>
           <p className="text-[10px] text-muted-foreground mt-0.5">Invested in repairs</p>
+        </div>
+      </div>
+
+      {/* Current Page Stock Summary Banner */}
+      <div className="rounded-2xl border bg-card/70 p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-foreground bg-red-500/10 text-red-600 dark:text-red-400 px-2.5 py-1 rounded-lg">
+            Page {currentPage} Defective Stock:
+          </span>
+          <span className="text-muted-foreground">
+            <strong className="text-foreground font-black">{pageRecordsCount}</strong> records on this page •{" "}
+            <strong className="text-foreground font-black">{pageTotalActiveUnits.toLocaleString()}</strong> defective units (
+            <span className="text-red-600 dark:text-red-400 font-bold">{pageAvailableUnits.toLocaleString()} Available Defective</span>,{" "}
+            <span className="text-sky-600 dark:text-sky-400 font-bold">{pageRepairingUnits.toLocaleString()} In Repair</span>
+            {pageSoldUnits > 0 ? `, ${pageSoldUnits.toLocaleString()} Sold` : ""}
+            {pageScrappedUnits > 0 ? `, ${pageScrappedUnits.toLocaleString()} Scrapped` : ""}
+            )
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground font-medium">
+          <span>
+            Total Filtered Available: <strong className="text-foreground font-black">{filteredSummary.totalAvailable.toLocaleString()}</strong> units ({totalRecords.toLocaleString()} records across all {totalPages} page{totalPages > 1 ? "s" : ""})
+          </span>
         </div>
       </div>
 
@@ -966,8 +1260,22 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                 </Button>
                 <Button
                   size="sm"
+                  onClick={handleOpenBulkMoveToGood}
+                  className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs"
+                >
+                  <PackageCheck size={13} /> Bulk Move to Good
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleOpenBulkReturnReceiving}
+                  className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-1 shadow-xs"
+                >
+                  <RotateCcw size={13} /> Bulk Return to Receiving
+                </Button>
+                <Button
+                  size="sm"
                   onClick={handleOpenBulkSell}
-                  className="h-8 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white gap-1"
+                  className="h-8 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white gap-1 shadow-xs"
                 >
                   <ShoppingCart size={13} /> Bulk Sell As-Is
                 </Button>
@@ -1125,6 +1433,32 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                     </button>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Move to Good Stock */}
+                      {hasAvailable && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenMoveToGood(item)}
+                          className="gap-1 text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold"
+                          title="Move to good sellable storefront stock"
+                        >
+                          <PackageCheck size={13} /> Move to Good
+                        </Button>
+                      )}
+
+                      {/* Return to Receiving */}
+                      {hasAvailable && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenReturnReceiving(item)}
+                          className="gap-1 text-xs border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-bold"
+                          title="Return back to receiving receipt pending inspection"
+                        >
+                          <RotateCcw size={13} /> Return to Receiving
+                        </Button>
+                      )}
+
                       {/* Send to Repair */}
                       {hasAvailable && (
                         <Button
@@ -1194,31 +1528,56 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between gap-4 pt-4 border-t">
+        {totalRecords > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t">
             <span className="text-xs text-muted-foreground">
-              Page {currentPage} of {totalPages} ({totalRecords} records)
+              Showing <strong className="text-foreground">{startRecord}–{endRecord}</strong> of{" "}
+              <strong className="text-foreground">{totalRecords.toLocaleString()}</strong> records{" "}
+              (<span className="font-semibold text-red-600 dark:text-red-400">{pageRecordsCount} on page {currentPage}</span>
+              {totalAllRecords > 0 && totalAllRecords !== totalRecords
+                ? ` • ${totalAllRecords.toLocaleString()} total all-time`
+                : ""}
+              )
             </span>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="gap-1 h-8 px-2 text-xs"
-              >
-                <ChevronLeft size={13} /> Prev
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="gap-1 h-8 px-2 text-xs"
-              >
-                Next <ChevronRight size={13} />
-              </Button>
-            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="gap-1 h-8 px-2.5 text-xs"
+                >
+                  <ChevronLeft size={13} /> Prev
+                </Button>
+
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span>Page</span>
+                  <input
+                    type="number"
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && goToPage(parseInt(pageInput))}
+                    placeholder={currentPage.toString()}
+                    className="w-12 h-8 px-1 text-center border rounded-lg bg-background text-xs"
+                    min={1}
+                    max={totalPages}
+                  />
+                  <span>of {totalPages}</span>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="gap-1 h-8 px-2.5 text-xs"
+                >
+                  Next <ChevronRight size={13} />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2180,6 +2539,436 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                       <Wrench size={14} />
                     )}
                     Send All to Repair ({bulkRepairItems.length})
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ─── MODAL 7: MOVE TO GOOD STOCK (SINGLE) ─── */}
+      {/* ========================================================= */}
+      {moveToGoodModalOpen && activeDefective && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-md w-full flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 text-emerald-600">
+              <div className="flex items-center gap-2.5">
+                <PackageCheck size={22} />
+                <h4 className="font-black text-base text-foreground">Move to Good Sellable Stock</h4>
+              </div>
+              <button
+                onClick={() => setMoveToGoodModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Directly move units from Defective Inventory into active storefront sellable stock (<code>Product.stock</code>).
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-muted/40 border flex flex-col gap-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Product:</span>
+                <span className="font-bold text-foreground max-w-[200px] truncate text-right">
+                  {activeDefective.product?.name || "Product"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Available Defective:</span>
+                <span className="font-black text-red-600 dark:text-red-400">
+                  {activeDefective.availableDefectiveQuantity} units
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Current Sellable Stock:</span>
+                <span className="font-black text-emerald-600 dark:text-emerald-400">
+                  {activeDefective.product?.stock ?? 0} units
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-1.5 border-t border-dashed">
+                <span className="text-muted-foreground font-medium">New Sellable Stock:</span>
+                <span className="font-black text-foreground">
+                  {(activeDefective.product?.stock ?? 0) + (Number(moveToGoodQty) || 0)} units
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmMoveToGood} className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Quantity to Move to Good Stock *</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={activeDefective.availableDefectiveQuantity}
+                  required
+                  value={moveToGoodQty}
+                  onChange={(e) => setMoveToGoodQty(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-base font-black text-center outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Correction Notes (Optional)</span>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Item verified in 100% working order, marked defective by mistake..."
+                  value={moveToGoodNotes}
+                  onChange={(e) => setMoveToGoodNotes(e.target.value)}
+                  className="w-full rounded-xl border bg-background p-2.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </label>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMoveToGoodModalOpen(false)}
+                  disabled={submittingMoveToGood}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={submittingMoveToGood}
+                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
+                  {submittingMoveToGood ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <PackageCheck size={14} />
+                  )}
+                  Confirm Move ({moveToGoodQty} units)
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ─── MODAL 8: RETURN TO RECEIVING (SINGLE) ─── */}
+      {/* ========================================================= */}
+      {returnReceivingModalOpen && activeDefective && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-md w-full flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 text-amber-600">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw size={22} />
+                <h4 className="font-black text-base text-foreground">Return to Stock Receiving</h4>
+              </div>
+              <button
+                onClick={() => setReturnReceivingModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Revert mistaken defective items back to the receiving receipt pending inspection queue.
+            </p>
+
+            <div className="p-3.5 rounded-2xl bg-muted/40 border flex flex-col gap-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Product:</span>
+                <span className="font-bold text-foreground max-w-[200px] truncate text-right">
+                  {activeDefective.product?.name || "Product"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Linked Receipt:</span>
+                <span className="font-bold text-foreground">
+                  {activeDefective.receipt?.receiptNumber || "Direct Shipment"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Available Defective:</span>
+                <span className="font-black text-red-600 dark:text-red-400">
+                  {activeDefective.availableDefectiveQuantity} units
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmReturnReceiving} className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Quantity to Return to Receiving *</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={activeDefective.availableDefectiveQuantity}
+                  required
+                  value={returnReceivingQty}
+                  onChange={(e) => setReturnReceivingQty(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-base font-black text-center outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Reason / Notes (Optional)</span>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Marked defective in error during inspection, returning for QA re-check..."
+                  value={returnReceivingNotes}
+                  onChange={(e) => setReturnReceivingNotes(e.target.value)}
+                  className="w-full rounded-xl border bg-background p-2.5 text-xs outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </label>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReturnReceivingModalOpen(false)}
+                  disabled={submittingReturnReceiving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={submittingReturnReceiving}
+                  className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                >
+                  {submittingReturnReceiving ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <RotateCcw size={14} />
+                  )}
+                  Confirm Return ({returnReceivingQty} units)
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ─── BULK MODAL 4: BULK MOVE TO GOOD STOCK ─── */}
+      {/* ========================================================= */}
+      {bulkMoveToGoodModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 text-emerald-600">
+              <div className="flex items-center gap-2.5">
+                <PackageCheck size={22} />
+                <div>
+                  <h4 className="font-black text-base text-foreground">Bulk Move Defective Stock to Good</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Move multiple defective items directly into active storefront sellable stock.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setBulkMoveToGoodModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmBulkMoveToGood} className="flex flex-col gap-4">
+              <div className="border rounded-2xl overflow-hidden bg-background divide-y max-h-60 overflow-y-auto">
+                {bulkMoveToGoodItems.map((row, idx) => (
+                  <div
+                    key={row.defectiveId}
+                    className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-foreground max-w-[220px]">
+                        <TooltipCell
+                          text={row.item.product?.name || "Defective Product"}
+                          tooltipTitle="Product Name"
+                          maxChars={28}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        Defective: <strong>{row.item.availableDefectiveQuantity}</strong> • Current Sellable: <strong>{row.item.product?.stock ?? 0}</strong> • Defect: {row.item.defectReason}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="flex items-center gap-1 font-bold text-muted-foreground">
+                        <span>Move Qty:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={row.item.availableDefectiveQuantity}
+                          required
+                          value={row.quantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setBulkMoveToGoodItems((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, quantity: val } : r))
+                            );
+                          }}
+                          className="w-16 rounded-lg border bg-background p-1.5 text-center font-bold text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>General Notes / Reason (Optional)</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Products inspected and confirmed in good order..."
+                  value={bulkMoveToGoodNotes}
+                  onChange={(e) => setBulkMoveToGoodNotes(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </label>
+
+              <div className="flex items-center justify-between border-t pt-3">
+                <span className="text-xs text-muted-foreground">
+                  Total Units Moving:{" "}
+                  <strong className="text-emerald-600 font-bold text-sm">
+                    {bulkMoveToGoodItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)} units
+                  </strong>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBulkMoveToGoodModalOpen(false)}
+                    disabled={submittingBulkMoveToGood}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={submittingBulkMoveToGood}
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                  >
+                    {submittingBulkMoveToGood ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <PackageCheck size={14} />
+                    )}
+                    Move All to Good ({bulkMoveToGoodItems.length} items)
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ─── BULK MODAL 5: BULK RETURN TO RECEIVING ─── */}
+      {/* ========================================================= */}
+      {bulkReturnReceivingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 text-amber-600">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw size={22} />
+                <div>
+                  <h4 className="font-black text-base text-foreground">Bulk Return Defective Stock to Receiving</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Revert multiple defective items back to their receiving receipt pending inspection queue.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setBulkReturnReceivingModalOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmBulkReturnReceiving} className="flex flex-col gap-4">
+              <div className="border rounded-2xl overflow-hidden bg-background divide-y max-h-60 overflow-y-auto">
+                {bulkReturnReceivingItems.map((row, idx) => (
+                  <div
+                    key={row.defectiveId}
+                    className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-foreground max-w-[220px]">
+                        <TooltipCell
+                          text={row.item.product?.name || "Defective Product"}
+                          tooltipTitle="Product Name"
+                          maxChars={28}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        Receipt: <strong>{row.item.receipt?.receiptNumber || "Direct Shipment"}</strong> • Available: <strong>{row.item.availableDefectiveQuantity}</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="flex items-center gap-1 font-bold text-muted-foreground">
+                        <span>Return Qty:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={row.item.availableDefectiveQuantity}
+                          required
+                          value={row.quantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setBulkReturnReceivingItems((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, quantity: val } : r))
+                            );
+                          }}
+                          className="w-16 rounded-lg border bg-background p-1.5 text-center font-bold text-amber-600 outline-none focus:ring-2 focus:ring-amber-500/40"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>General Notes / Reason (Optional)</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Products marked defective by mistake, returning to receiving queue..."
+                  value={bulkReturnReceivingNotes}
+                  onChange={(e) => setBulkReturnReceivingNotes(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </label>
+
+              <div className="flex items-center justify-between border-t pt-3">
+                <span className="text-xs text-muted-foreground">
+                  Total Units Returning:{" "}
+                  <strong className="text-amber-600 font-bold text-sm">
+                    {bulkReturnReceivingItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)} units
+                  </strong>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBulkReturnReceivingModalOpen(false)}
+                    disabled={submittingBulkReturnReceiving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={submittingBulkReturnReceiving}
+                    className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                  >
+                    {submittingBulkReturnReceiving ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <RotateCcw size={14} />
+                    )}
+                    Return All to Receiving ({bulkReturnReceivingItems.length} items)
                   </Button>
                 </div>
               </div>

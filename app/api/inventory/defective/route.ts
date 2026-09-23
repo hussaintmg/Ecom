@@ -72,7 +72,9 @@ export async function GET(req: NextRequest) {
       .skip(skip)
       .limit(limit);
 
-    // Compute summary totals across defective stock
+    const totalAllRecords = await DefectiveInventory.countDocuments({});
+
+    // Compute summary totals across all defective stock
     const summaryAgg = await DefectiveInventory.aggregate([
       {
         $group: {
@@ -94,13 +96,46 @@ export async function GET(req: NextRequest) {
       totalRepairCostSpent: 0,
     };
 
+    let filteredSummary = summary;
+    const hasFilters =
+      Boolean(status && status !== "All") ||
+      Boolean(defectReason && defectReason !== "All") ||
+      Boolean(hasAvailable === "true") ||
+      Boolean(hasRepairing === "true") ||
+      Boolean(search);
+
+    if (hasFilters) {
+      const filteredAgg = await DefectiveInventory.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            totalAvailable: { $sum: "$availableDefectiveQuantity" },
+            totalRepairing: { $sum: "$quantityRepairing" },
+            totalSold: { $sum: "$quantitySold" },
+            totalScrapped: { $sum: "$quantityScrapped" },
+            totalRepairCostSpent: { $sum: "$repairCostSpent" },
+          },
+        },
+      ]);
+      filteredSummary = filteredAgg[0] || {
+        totalAvailable: 0,
+        totalRepairing: 0,
+        totalSold: 0,
+        totalScrapped: 0,
+        totalRepairCostSpent: 0,
+      };
+    }
+
     return NextResponse.json({
       success: true,
       defectiveList,
       totalRecords,
+      totalAllRecords,
       totalPages,
       currentPage: page,
       summary,
+      filteredSummary,
     });
   } catch (error: any) {
     console.error("GET /api/inventory/defective error:", error);

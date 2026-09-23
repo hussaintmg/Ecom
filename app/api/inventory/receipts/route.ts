@@ -56,7 +56,9 @@ export async function GET(req: NextRequest) {
       .skip(skip)
       .limit(limit);
 
-    // Compute top-level summary counts
+    const totalAllReceipts = await InventoryReceipt.countDocuments({});
+
+    // Compute top-level summary counts (all-time overall)
     const summaryAgg = await InventoryReceipt.aggregate([
       { $unwind: "$items" },
       {
@@ -77,13 +79,40 @@ export async function GET(req: NextRequest) {
       totalDefective: 0,
     };
 
+    // If query has filters, compute filtered summary
+    let filteredSummary = summary;
+    const hasFilters = Boolean(status && status !== "All") || Boolean(search);
+    if (hasFilters) {
+      const filteredAgg = await InventoryReceipt.aggregate([
+        { $match: query },
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: null,
+            totalReceived: { $sum: "$items.qtyReceived" },
+            totalPending: { $sum: "$items.qtyPending" },
+            totalGood: { $sum: "$items.qtyGood" },
+            totalDefective: { $sum: "$items.qtyDefective" },
+          },
+        },
+      ]);
+      filteredSummary = filteredAgg[0] || {
+        totalReceived: 0,
+        totalPending: 0,
+        totalGood: 0,
+        totalDefective: 0,
+      };
+    }
+
     return NextResponse.json({
       success: true,
       receipts,
       totalReceipts,
+      totalAllReceipts,
       totalPages,
       currentPage: page,
       summary,
+      filteredSummary,
     });
   } catch (error: any) {
     console.error("GET /api/inventory/receipts error:", error);

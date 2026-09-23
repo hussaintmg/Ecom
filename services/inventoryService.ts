@@ -150,6 +150,40 @@ export interface DispatchRepairVendorInput {
   items: DispatchRepairItemInput[];
 }
 
+export interface ReturnDefectiveToReceivingInput {
+  defectiveId: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface BulkReturnDefectiveItem {
+  defectiveId: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface BulkReturnDefectiveToReceivingInput {
+  items: BulkReturnDefectiveItem[];
+  notes?: string;
+}
+
+export interface MoveDefectiveToGoodInput {
+  defectiveId: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface BulkMoveDefectiveItem {
+  defectiveId: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface BulkMoveDefectiveToGoodInput {
+  items: BulkMoveDefectiveItem[];
+  notes?: string;
+}
+
 export class InventoryService {
   /**
    * 1. Receive new physical stock into "Pending Inspection".
@@ -1089,9 +1123,12 @@ export class InventoryService {
       totalPhysical: 0,
     };
 
+    const totalAllProducts = await Product.countDocuments();
+
     return {
       products,
       totalProducts,
+      totalAllProducts,
       totalPages: Math.ceil(totalProducts / limit) || 1,
       currentPage: page,
       totalSellable: totals.totalSellable,
@@ -1182,6 +1219,55 @@ export class InventoryService {
   }
 
   /**
+   * Delete a single defective inventory entry with validation and audit log.
+   */
+  static async deleteDefective(defectiveId: string, userId?: string) {
+    await connectDB();
+    ensureModels();
+
+    const defective = await DefectiveInventory.findById(defectiveId);
+    if (!defective) {
+      throw new Error("Defective inventory record not found.");
+    }
+
+    // Check if there are active repair jobs in progress
+    const activeJobsCount = await RepairJob.countDocuments({
+      defectiveInventory: defective._id,
+      status: "In Progress",
+    });
+
+    if (activeJobsCount > 0) {
+      throw new Error(
+        `Cannot delete: This defective batch has ${activeJobsCount} repair job(s) currently in progress.`
+      );
+    }
+
+    const product = await Product.findById(defective.product);
+
+    // Create StockLog audit entry
+    await StockLog.create({
+      product: defective.product,
+      change: 0,
+      description: `Defective Record Deleted (${defective.defectReason}): Qty ${defective.availableDefectiveQuantity} removed from defective registry`,
+      previousStock: product?.stock || 0,
+      resultingStock: product?.stock || 0,
+      quantity: defective.availableDefectiveQuantity,
+      movementType: "adjustment",
+      fromState: "defective",
+      toState: "deleted",
+      defectiveId: defective._id,
+      performedBy: userId || null,
+    });
+
+    await DefectiveInventory.findByIdAndDelete(defectiveId);
+
+    return {
+      success: true,
+      deletedId: defectiveId,
+    };
+  }
+
+  /**
    * Bulk delete defective inventory entries.
    */
   static async bulkDeleteDefective(ids: string[]) {
@@ -1190,6 +1276,321 @@ export class InventoryService {
     if (!ids || ids.length === 0) return { success: true, deletedCount: 0 };
     const result = await DefectiveInventory.deleteMany({ _id: { $in: ids } });
     return { success: true, deletedCount: result.deletedCount };
+  }
+
+  /**
+   * Return defective stock back to Stock Receiving (Receipt pending inspection).
+   * - Decreases availableDefectiveQuantity on DefectiveInventory.
+   * - Increments qtyPending and decrements qtyDefective on the linked InventoryReceipt item.
+   * - Recalculates and updates receipt inspection status.
+   * - Logs movement in StockLog.
+   * - Invariant: Sellable stock (Product.stock) remains unchanged.
+   */
+  static async returnDefectiveToReceiving(
+    input: ReturnDefectiveToReceivingInput,
+    userId?: string
+  ) {
+    await connectDB();
+    ensureModels();
+
+    const qty = Number(input.quantity);
+    if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+      throw new Error("Quantity to return must be a positive whole number.");
+    }
+
+    // Atomic conditional decrement of available defective quantity
+    const defective = await DefectiveInventory.findOneAndUpdate(
+      {
+        _id: input.defectiveId,
+        availableDefectiveQuantity: { $gte: qty },
+      },
+      {
+        $inc: {
+          availableDefectiveQuantity: -qty,
+          originalQuantity: -qty,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!defective) {
+      throw new Error(
+        "Cannot return to receiving: Available defective quantity is insufficient or entry not found."
+      );
+    }
+
+    if (
+      defective.availableDefectiveQuantity === 0 &&
+      defective.quantityRepairing === 0 &&
+      defective.quantitySold === 0 &&
+      defective.quantityScrapped === 0
+    ) {
+      defective.status = "Returned to Receiving";
+    }
+    await defective.save();
+
+    let receiptNumber = "N/A";
+    let receiptDoc: any = null;
+
+    if (defective.receipt) {
+      receiptDoc = await InventoryReceipt.findById(defective.receipt);
+      if (receiptDoc) {
+        receiptNumber = receiptDoc.receiptNumber;
+        let itemIndex = -1;
+        if (defective.receiptItemId) {
+          itemIndex = receiptDoc.items.findIndex(
+            (it: any) => String(it._id) === String(defective.receiptItemId)
+          );
+        }
+        if (itemIndex === -1) {
+          itemIndex = receiptDoc.items.findIndex(
+            (it: any) => String(it.product) === String(defective.product)
+          );
+        }
+
+        if (itemIndex !== -1) {
+          const item = receiptDoc.items[itemIndex];
+          item.qtyDefective = Math.max(0, (item.qtyDefective || 0) - qty);
+          item.qtyPending = (item.qtyPending || 0) + qty;
+          await receiptDoc.save();
+          await this.syncReceiptStatus(receiptDoc._id);
+        }
+      }
+    }
+
+    const product = await Product.findById(defective.product);
+
+    // StockLog entry
+    await StockLog.create({
+      product: defective.product,
+      change: 0,
+      description: `Returned to Stock Receiving: ${qty} units reverted to Receipt ${receiptNumber} (Mistaken Defect)`,
+      previousStock: product?.stock || 0,
+      resultingStock: product?.stock || 0,
+      quantity: qty,
+      movementType: "defective_to_receiving",
+      fromState: "defective",
+      toState: "pending",
+      defectiveId: defective._id,
+      receiptId: defective.receipt || null,
+      performedBy: userId || null,
+      notes: input.notes?.trim() || "",
+    });
+
+    return {
+      success: true,
+      defective,
+      receiptNumber,
+      returnedQty: qty,
+    };
+  }
+
+  /**
+   * Bulk return multiple defective items back to Stock Receiving.
+   */
+  static async bulkReturnDefectiveToReceiving(
+    input: BulkReturnDefectiveToReceivingInput,
+    userId?: string
+  ) {
+    await connectDB();
+    ensureModels();
+
+    if (!input.items || !Array.isArray(input.items) || input.items.length === 0) {
+      throw new Error("No defective items provided for return to receiving.");
+    }
+
+    const results: any[] = [];
+    const errors: string[] = [];
+
+    for (const item of input.items) {
+      const qty = Number(item.quantity);
+      if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) continue;
+
+      try {
+        const res = await this.returnDefectiveToReceiving(
+          {
+            defectiveId: item.defectiveId,
+            quantity: qty,
+            notes: item.notes || input.notes,
+          },
+          userId
+        );
+        results.push(res);
+      } catch (err: any) {
+        errors.push(`Item ${item.defectiveId}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      returnedCount: results.length,
+      results,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  /**
+   * Move defective stock directly to Good (Sellable) Stock.
+   * - Decreases availableDefectiveQuantity on DefectiveInventory.
+   * - Increments sellable stock on the Product (Product.stock).
+   * - Updates receipt item if linked (qtyDefective -= qty, qtyGood += qty).
+   * - Logs movement in StockLog.
+   */
+  static async moveDefectiveToGood(
+    input: MoveDefectiveToGoodInput,
+    userId?: string
+  ) {
+    await connectDB();
+    ensureModels();
+
+    const qty = Number(input.quantity);
+    if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+      throw new Error("Quantity to move must be a positive whole number.");
+    }
+
+    // Atomic conditional decrement of available defective quantity
+    const defective = await DefectiveInventory.findOneAndUpdate(
+      {
+        _id: input.defectiveId,
+        availableDefectiveQuantity: { $gte: qty },
+      },
+      {
+        $inc: {
+          availableDefectiveQuantity: -qty,
+          originalQuantity: -qty,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!defective) {
+      throw new Error(
+        "Cannot move to good stock: Available defective quantity is insufficient or entry not found."
+      );
+    }
+
+    if (
+      defective.availableDefectiveQuantity === 0 &&
+      defective.quantityRepairing === 0 &&
+      defective.quantitySold === 0 &&
+      defective.quantityScrapped === 0
+    ) {
+      defective.status = "Moved to Good Stock";
+    }
+    await defective.save();
+
+    // Increment sellable stock on the Product
+    const prevProduct = await Product.findOneAndUpdate(
+      { _id: defective.product },
+      { $inc: { stock: qty } },
+      { returnDocument: "before" }
+    );
+
+    if (!prevProduct) {
+      throw new Error("Product record not found.");
+    }
+
+    const previousStock = prevProduct.stock;
+    const resultingStock = previousStock + qty;
+
+    // If linked to a receipt, update the receipt item
+    let receiptNumber = "N/A";
+    if (defective.receipt) {
+      const receiptDoc = await InventoryReceipt.findById(defective.receipt);
+      if (receiptDoc) {
+        receiptNumber = receiptDoc.receiptNumber;
+        let itemIndex = -1;
+        if (defective.receiptItemId) {
+          itemIndex = receiptDoc.items.findIndex(
+            (it: any) => String(it._id) === String(defective.receiptItemId)
+          );
+        }
+        if (itemIndex === -1) {
+          itemIndex = receiptDoc.items.findIndex(
+            (it: any) => String(it.product) === String(defective.product)
+          );
+        }
+
+        if (itemIndex !== -1) {
+          const item = receiptDoc.items[itemIndex];
+          item.qtyDefective = Math.max(0, (item.qtyDefective || 0) - qty);
+          item.qtyGood = (item.qtyGood || 0) + qty;
+          await receiptDoc.save();
+          await this.syncReceiptStatus(receiptDoc._id);
+        }
+      }
+    }
+
+    // StockLog entry
+    await StockLog.create({
+      product: defective.product,
+      change: qty, // Positive increase to sellable stock
+      description: `Moved directly from Defective to Good Stock: +${qty} units (Defect correction)${
+        receiptNumber !== "N/A" ? ` from receipt ${receiptNumber}` : ""
+      }`,
+      previousStock,
+      resultingStock,
+      quantity: qty,
+      movementType: "defective_to_good",
+      fromState: "defective",
+      toState: "sellable",
+      defectiveId: defective._id,
+      receiptId: defective.receipt || null,
+      performedBy: userId || null,
+      notes: input.notes?.trim() || "",
+    });
+
+    return {
+      success: true,
+      defective,
+      newSellableStock: resultingStock,
+      movedQty: qty,
+      receiptNumber,
+    };
+  }
+
+  /**
+   * Bulk move multiple defective items directly to Good (Sellable) Stock.
+   */
+  static async bulkMoveDefectiveToGood(
+    input: BulkMoveDefectiveToGoodInput,
+    userId?: string
+  ) {
+    await connectDB();
+    ensureModels();
+
+    if (!input.items || !Array.isArray(input.items) || input.items.length === 0) {
+      throw new Error("No defective items provided to move to good stock.");
+    }
+
+    const results: any[] = [];
+    const errors: string[] = [];
+
+    for (const item of input.items) {
+      const qty = Number(item.quantity);
+      if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) continue;
+
+      try {
+        const res = await this.moveDefectiveToGood(
+          {
+            defectiveId: item.defectiveId,
+            quantity: qty,
+            notes: item.notes || input.notes,
+          },
+          userId
+        );
+        results.push(res);
+      } catch (err: any) {
+        errors.push(`Item ${item.defectiveId}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      movedCount: results.length,
+      results,
+      errors: errors.length > 0 ? errors : undefined,
+    };
   }
 
   /**

@@ -40,6 +40,8 @@ const StockLogSchema = new Schema(
         "repair_failed",
         "defective_sale",
         "scrapped",
+        "defective_to_receiving",
+        "defective_to_good",
         "reversal",
       ],
       default: "adjustment",

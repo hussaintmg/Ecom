@@ -44,6 +44,8 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalReceipts, setTotalReceipts] = useState(0);
+  const [totalAllReceipts, setTotalAllReceipts] = useState(0);
+  const [pageInput, setPageInput] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [selectedReceiptIds, setSelectedReceiptIds] = useState<string[]>([]);
@@ -51,6 +53,12 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [receiptToDelete, setReceiptToDelete] = useState<string | null>(null);
   const [summary, setSummary] = useState({
+    totalReceived: 0,
+    totalPending: 0,
+    totalGood: 0,
+    totalDefective: 0,
+  });
+  const [filteredSummary, setFilteredSummary] = useState({
     totalReceived: 0,
     totalPending: 0,
     totalGood: 0,
@@ -121,7 +129,10 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
           setReceipts(data.receipts || []);
           setTotalPages(data.totalPages || 1);
           setTotalReceipts(data.totalReceipts || 0);
+          setTotalAllReceipts(data.totalAllReceipts || data.totalReceipts || 0);
           if (data.summary) setSummary(data.summary);
+          if (data.filteredSummary) setFilteredSummary(data.filteredSummary);
+          else if (data.summary) setFilteredSummary(data.summary);
         }
       } catch (err) {
         console.error("Error fetching receipts:", err);
@@ -426,6 +437,34 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
     );
   };
 
+  const pageReceiptsCount = receipts.length;
+  const startReceipt = totalReceipts > 0 ? (currentPage - 1) * 10 + 1 : 0;
+  const endReceipt = Math.min(currentPage * 10, totalReceipts);
+
+  const pageReceivedUnits = receipts.reduce(
+    (acc, r) => acc + (r.items?.reduce((s: number, i: any) => s + (i.qtyReceived || 0), 0) || 0),
+    0
+  );
+  const pagePendingUnits = receipts.reduce(
+    (acc, r) => acc + (r.items?.reduce((s: number, i: any) => s + (i.qtyPending || 0), 0) || 0),
+    0
+  );
+  const pageGoodUnits = receipts.reduce(
+    (acc, r) => acc + (r.items?.reduce((s: number, i: any) => s + (i.qtyGood || 0), 0) || 0),
+    0
+  );
+  const pageDefectiveUnits = receipts.reduce(
+    (acc, r) => acc + (r.items?.reduce((s: number, i: any) => s + (i.qtyDefective || 0), 0) || 0),
+    0
+  );
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      setPageInput("");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -443,7 +482,21 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
           <div>
             <h1 className="text-2xl font-black tracking-tight">Stock Receiving & Inspection</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Receive shipments into Pending Inspection and classify into Good or Defective stock
+              {loading && receipts.length === 0 ? (
+                "Loading shipments..."
+              ) : totalReceipts > 0 ? (
+                <>
+                  Showing <strong className="text-foreground">{startReceipt}–{endReceipt}</strong> of{" "}
+                  <strong className="text-foreground">{totalReceipts.toLocaleString()}</strong> shipments
+                  {" "}(<span className="font-semibold text-amber-600 dark:text-amber-400">{pageReceiptsCount} on this page</span>
+                  {totalAllReceipts > 0 && totalAllReceipts !== totalReceipts
+                    ? ` • ${totalAllReceipts.toLocaleString()} total all-time`
+                    : ""}
+                  ) • Page <strong className="text-foreground">{currentPage}</strong> of <strong className="text-foreground">{totalPages}</strong>
+                </>
+              ) : (
+                "No shipments found matching filters"
+              )}
             </p>
           </div>
         </div>
@@ -509,6 +562,28 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
             {loading ? "..." : summary.totalDefective.toLocaleString()}
           </div>
           <p className="text-[10px] text-muted-foreground mt-0.5">Moved to defective inventory</p>
+        </div>
+      </div>
+
+      {/* Current Page Stock Summary Banner */}
+      <div className="rounded-2xl border bg-card/70 p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-foreground bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2.5 py-1 rounded-lg">
+            Page {currentPage} Shipments Stock:
+          </span>
+          <span className="text-muted-foreground">
+            <strong className="text-foreground font-black">{pageReceiptsCount}</strong> shipments on this page •{" "}
+            <strong className="text-foreground font-black">{pageReceivedUnits.toLocaleString()}</strong> units received on this page (
+            <span className="text-amber-600 dark:text-amber-400 font-bold">{pagePendingUnits.toLocaleString()} Pending</span>,{" "}
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{pageGoodUnits.toLocaleString()} Good</span>,{" "}
+            <span className="text-red-600 dark:text-red-400 font-bold">{pageDefectiveUnits.toLocaleString()} Defective</span>
+            )
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground font-medium">
+          <span>
+            Total Filtered: <strong className="text-foreground font-black">{filteredSummary.totalReceived.toLocaleString()}</strong> units received ({totalReceipts.toLocaleString()} shipments across all {totalPages} page{totalPages > 1 ? "s" : ""})
+          </span>
         </div>
       </div>
 
@@ -825,31 +900,56 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between gap-4 pt-4 border-t">
+        {totalReceipts > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t">
             <span className="text-xs text-muted-foreground">
-              Page {currentPage} of {totalPages} ({totalReceipts} shipments)
+              Showing <strong className="text-foreground">{startReceipt}–{endReceipt}</strong> of{" "}
+              <strong className="text-foreground">{totalReceipts.toLocaleString()}</strong> shipments{" "}
+              (<span className="font-semibold text-amber-600 dark:text-amber-400">{pageReceiptsCount} on page {currentPage}</span>
+              {totalAllReceipts > 0 && totalAllReceipts !== totalReceipts
+                ? ` • ${totalAllReceipts.toLocaleString()} total all-time`
+                : ""}
+              )
             </span>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="gap-1 h-8 px-2 text-xs"
-              >
-                <ChevronLeft size={13} /> Prev
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="gap-1 h-8 px-2 text-xs"
-              >
-                Next <ChevronRight size={13} />
-              </Button>
-            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="gap-1 h-8 px-2.5 text-xs"
+                >
+                  <ChevronLeft size={13} /> Prev
+                </Button>
+
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span>Page</span>
+                  <input
+                    type="number"
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && goToPage(parseInt(pageInput))}
+                    placeholder={currentPage.toString()}
+                    className="w-12 h-8 px-1 text-center border rounded-lg bg-background text-xs"
+                    min={1}
+                    max={totalPages}
+                  />
+                  <span>of {totalPages}</span>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="gap-1 h-8 px-2.5 text-xs"
+                >
+                  Next <ChevronRight size={13} />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

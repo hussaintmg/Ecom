@@ -84,6 +84,8 @@ const DefectiveInventorySchema = new Schema(
         "Partially Resolved",
         "Sold",
         "Scrapped",
+        "Returned to Receiving",
+        "Moved to Good Stock",
         "Closed",
       ],
       default: "Awaiting Decision",

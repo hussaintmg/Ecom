@@ -55,6 +55,7 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
   const [products, setProducts] = useState<ProductInventoryItem[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalProducts, setTotalProducts] = useState(0);
+  const [totalAllProducts, setTotalAllProducts] = useState(0);
 
   // Overall totals
   const [totals, setTotals] = useState({
@@ -113,6 +114,7 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
           setProducts(data.products || []);
           setTotalPages(data.totalPages || 1);
           setTotalProducts(data.totalProducts || 0);
+          setTotalAllProducts(data.totalAllProducts || data.totalProducts || 0);
           setTotals({
             totalSellable: data.totalSellable || 0,
             totalPending: data.totalPending || 0,
@@ -147,8 +149,15 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
     }
   };
 
-  const startProduct = (currentPage - 1) * 10 + 1;
+  const pageProductCount = products.length;
+  const startProduct = totalProducts > 0 ? (currentPage - 1) * 10 + 1 : 0;
   const endProduct = Math.min(currentPage * 10, totalProducts);
+
+  const pagePhysicalStock = products.reduce((acc, p) => acc + (p.totalPhysicalActiveStock || 0), 0);
+  const pageSellableStock = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+  const pagePendingStock = products.reduce((acc, p) => acc + (p.pendingStock || 0), 0);
+  const pageDefectiveStock = products.reduce((acc, p) => acc + (p.defectiveStock || 0), 0);
+  const pageRepairingStock = products.reduce((acc, p) => acc + (p.repairingStock || 0), 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -161,7 +170,21 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
           <div>
             <h1 className="text-2xl font-black tracking-tight">Main Inventory Overview</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Comprehensive physical stock tracking: Sellable, Pending Inspection, Defective, and In Repair
+              {loading && products.length === 0 ? (
+                "Loading physical stock inventory..."
+              ) : totalProducts > 0 ? (
+                <>
+                  Showing <strong className="text-foreground">{startProduct}–{endProduct}</strong> of{" "}
+                  <strong className="text-foreground">{totalProducts.toLocaleString()}</strong> products
+                  {" "}(<span className="font-semibold text-primary">{pageProductCount} on this page</span>
+                  {totalAllProducts > 0 && totalAllProducts !== totalProducts
+                    ? ` • ${totalAllProducts.toLocaleString()} total in catalog`
+                    : ""}
+                  ) • Page <strong className="text-foreground">{currentPage}</strong> of <strong className="text-foreground">{totalPages}</strong>
+                </>
+              ) : (
+                "No products found matching filters"
+              )}
             </p>
           </div>
         </div>
@@ -274,6 +297,29 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">Good + Pending + Def + Rep</p>
           </div>
+        </div>
+      </div>
+
+      {/* Current Page Stock Summary Banner */}
+      <div className="rounded-2xl border bg-card/70 p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-foreground bg-primary/10 text-primary px-2.5 py-1 rounded-lg">
+            Page {currentPage} Stock:
+          </span>
+          <span className="text-muted-foreground">
+            <strong className="text-foreground font-black">{pageProductCount}</strong> products on this page •{" "}
+            <strong className="text-foreground font-black">{pagePhysicalStock.toLocaleString()}</strong> physical units (
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{pageSellableStock.toLocaleString()} Good</span>,{" "}
+            <span className="text-amber-600 dark:text-amber-400 font-bold">{pagePendingStock.toLocaleString()} Pending</span>,{" "}
+            <span className="text-red-600 dark:text-red-400 font-bold">{pageDefectiveStock.toLocaleString()} Defective</span>,{" "}
+            <span className="text-sky-600 dark:text-sky-400 font-bold">{pageRepairingStock.toLocaleString()} In Repair</span>
+            )
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-muted-foreground font-medium">
+          <span>
+            Total Filtered: <strong className="text-foreground font-black">{totals.totalPhysical.toLocaleString()}</strong> units ({totalProducts.toLocaleString()} products across all {totalPages} page{totalPages > 1 ? "s" : ""})
+          </span>
         </div>
       </div>
 
@@ -542,48 +588,56 @@ export const InventoryOverviewContent = ({ basePath = "/admin" }: { basePath?: s
             </div>
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
+            {totalProducts > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t">
                 <div className="text-xs text-muted-foreground">
-                  Showing {startProduct}-{endProduct} of {totalProducts} products
+                  Showing <strong className="text-foreground">{startProduct}–{endProduct}</strong> of{" "}
+                  <strong className="text-foreground">{totalProducts.toLocaleString()}</strong> products{" "}
+                  (<span className="font-semibold text-primary">{pageProductCount} on page {currentPage}</span>
+                  {totalAllProducts > 0 && totalAllProducts !== totalProducts
+                    ? ` • ${totalAllProducts.toLocaleString()} total in catalog`
+                    : ""}
+                  )
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => goToPage(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="gap-1 h-8 px-2.5 text-xs"
-                  >
-                    <ChevronLeft size={13} /> Prev
-                  </Button>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="gap-1 h-8 px-2.5 text-xs"
+                    >
+                      <ChevronLeft size={13} /> Prev
+                    </Button>
 
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span>Page</span>
-                    <input
-                      type="number"
-                      value={pageInput}
-                      onChange={(e) => setPageInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && goToPage(parseInt(pageInput))}
-                      placeholder={currentPage.toString()}
-                      className="w-12 h-8 px-1 text-center border rounded-lg bg-background text-xs"
-                      min={1}
-                      max={totalPages}
-                    />
-                    <span>of {totalPages}</span>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span>Page</span>
+                      <input
+                        type="number"
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && goToPage(parseInt(pageInput))}
+                        placeholder={currentPage.toString()}
+                        className="w-12 h-8 px-1 text-center border rounded-lg bg-background text-xs"
+                        min={1}
+                        max={totalPages}
+                      />
+                      <span>of {totalPages}</span>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="gap-1 h-8 px-2.5 text-xs"
+                    >
+                      Next <ChevronRight size={13} />
+                    </Button>
                   </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="gap-1 h-8 px-2.5 text-xs"
-                  >
-                    Next <ChevronRight size={13} />
-                  </Button>
-                </div>
+                )}
               </div>
             )}
           </>
