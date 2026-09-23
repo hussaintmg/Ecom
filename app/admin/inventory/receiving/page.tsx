@@ -645,29 +645,29 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
             </div>
 
             {selectedReceiptIds.length > 0 && (
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs font-bold text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-lg">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                   {selectedReceiptIds.length} Selected
                 </span>
-                <Button
-                  size="sm"
-                  variant="outline"
+                <button
+                  type="button"
                   onClick={() => setSelectedReceiptIds([])}
-                  className="h-8 text-xs font-bold"
+                  className="h-9 px-3 text-xs font-bold rounded-xl border border-border bg-card hover:bg-muted text-foreground transition-all duration-150 active:scale-95 cursor-pointer shadow-2xs"
                 >
                   Clear Selection
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     setReceiptToDelete(null);
                     setDeleteConfirmOpen(true);
                   }}
-                  className="h-8 text-xs font-bold bg-red-600 hover:bg-red-700 text-white gap-1.5 shadow-xs"
+                  className="h-9 px-3.5 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white gap-2 inline-flex items-center transition-all duration-200 shadow-xs hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer group"
                 >
-                  <Trash2 size={13} /> Delete Selected ({selectedReceiptIds.length})
-                </Button>
+                  <Trash2 size={15} className="transition-transform duration-200 group-hover:scale-110" />
+                  <span>Delete Selected ({selectedReceiptIds.length})</span>
+                </button>
               </div>
             )}
           </div>
@@ -874,24 +874,24 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                     <Button
                       size="sm"
                       onClick={() => handleOpenInspection(r._id)}
-                      className="gap-1 text-xs"
+                      className="gap-1.5 text-xs h-9 px-3 rounded-xl font-bold"
                       variant={totalPending > 0 ? "primary" : "outline"}
                     >
                       {totalPending > 0 ? "Inspect Quality" : "View Inspection"}
                     </Button>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                    <button
+                      type="button"
                       onClick={() => {
                         setReceiptToDelete(r._id);
                         setDeleteConfirmOpen(true);
                       }}
-                      className="p-2 h-8 w-8 text-red-600 hover:bg-red-500/10"
+                      className="w-9 h-9 flex items-center justify-center rounded-xl border border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white hover:border-red-600 dark:hover:bg-red-600 dark:hover:text-white transition-all duration-200 shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer group"
                       title="Delete shipment"
+                      aria-label="Delete shipment"
                     >
-                      <Trash2 size={14} />
-                    </Button>
+                      <Trash2 size={16} className="transition-transform duration-200 group-hover:scale-110" />
+                    </button>
                   </div>
                 </div>
               );
@@ -1198,9 +1198,11 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                           <button
                             type="button"
                             onClick={() => handleRemoveReceivingItem(idx)}
-                            className="p-1 text-muted-foreground hover:text-red-500 rounded mt-3"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors mt-3 cursor-pointer group"
+                            title="Remove item"
+                            aria-label="Remove item"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={15} className="transition-transform duration-200 group-hover:scale-110" />
                           </button>
                         </div>
                       </div>
@@ -1634,19 +1636,23 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                   setReceiptToDelete(null);
                 }}
                 disabled={deletingBulk}
+                className="h-9 px-3.5 text-xs font-bold rounded-xl"
               >
                 Cancel
               </Button>
-              <Button
+              <button
                 type="button"
-                size="sm"
                 disabled={deletingBulk}
                 onClick={handleBulkDelete}
-                className="gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold"
+                className="h-9 px-4 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white gap-2 inline-flex items-center transition-all duration-150 shadow-xs hover:shadow-md active:scale-95 cursor-pointer disabled:opacity-50 disabled:pointer-events-none group"
               >
-                {deletingBulk ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                Delete {receiptToDelete ? "Shipment" : `(${selectedReceiptIds.length})`}
-              </Button>
+                {deletingBulk ? (
+                  <RefreshCw size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} className="transition-transform duration-200 group-hover:scale-110" />
+                )}
+                <span>Delete {receiptToDelete ? "Shipment" : `(${selectedReceiptIds.length})`}</span>
+              </button>
             </div>
           </div>
         </div>
