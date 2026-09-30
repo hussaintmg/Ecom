@@ -63,7 +63,10 @@ export const downloadInvoicePDF = async (invoice: any) => {
     invoice.totalAmount ??
     rawItems.reduce((s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1), 0);
 
-  // 2. Extract image URLs
+  // 2. Extract image URLs and details
+  const isRepair = invoiceType === "Repair";
+  const isCustomerRepair = isRepair && invoice.repairSource === "customer";
+
   const itemsWithUrl = rawItems.map((item: any) => {
     let imageUrl = "";
     const imgs = item.product?.images;
@@ -73,10 +76,10 @@ export const downloadInvoicePDF = async (invoice: any) => {
       imageUrl = item.product.image;
     }
     return {
-      productName: item.product?.name || "Deleted Product",
-      quantity: item.quantity ?? 0,
+      productName: item.product?.name || item.productName || "Product",
+      quantity: item.quantity ?? 1,
       salePrice: item.salePrice ?? 0,
-      description: item.description || "",
+      description: item.defectDescription || item.description || "",
       productDescription: item.product?.description || "",
       imageUrl,
     };
@@ -90,32 +93,32 @@ export const downloadInvoicePDF = async (invoice: any) => {
     .map((item, i) => {
       const b64 = b64s[i];
       const imgBlock = b64
-        ? `<div style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;background:#ffffff;flex-shrink:0;">
+        ? `<div style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;background:#ffffff;flex-shrink:0;">
              <img src="${b64}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(item.productName)}" />
            </div>`
-        : `<div style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:8px;border:1px solid #e5e7eb;background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:500;flex-shrink:0;">No Image</div>`;
+        : `<div style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:6px;border:1px solid #e5e7eb;background:#f3f4f6;color:#9ca3af;font-size:9px;font-weight:500;flex-shrink:0;">No Image</div>`;
 
       const noteDesc = esc(item.description);
 
       const textBlock = `
-        <div style="flex:1;margin-left:12px;">
-          <div style="font-weight:600;color:#111827;font-size:13px;margin-bottom:4px;">${esc(item.productName)}</div>
+        <div style="flex:1;margin-left:10px;">
+          <div style="font-weight:600;color:#111827;font-size:12px;margin-bottom:2px;">${esc(item.productName)}</div>
           ${noteDesc && noteDesc.trim() !== "No description" && noteDesc.trim() !== "" 
-            ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">Desc: ${noteDesc}</div>` : ""}
+            ? `<div style="font-size:10px;color:#d97706;font-weight:500;">Defect/Issue: ${noteDesc}</div>` : ""}
         </div>`;
 
       return `
         <tr>
-          <td style="padding:12px;border-bottom:1px solid #f0f0f0;vertical-align:middle;">
+          <td style="padding:10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;">
             <div style="display:flex;align-items:center;">
               ${imgBlock}
               ${textBlock}
             </div>
            </td>
-          <td style="padding:12px;border-bottom:1px solid #f0f0f0;text-align:center;vertical-align:middle;font-weight:500;font-size:13px;color:#374151;">
+          <td style="padding:10px;border-bottom:1px solid #f0f0f0;text-align:center;vertical-align:middle;font-weight:600;font-size:12px;color:#374151;">
             ${item.quantity}
            </td>
-          <td style="padding:12px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:middle;font-weight:600;font-size:13px;color:#059669;">
+          <td style="padding:10px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:middle;font-weight:600;font-size:12px;color:#059669;">
             Rs. ${item.salePrice.toLocaleString()}
            </td>
         </tr>`;
@@ -133,82 +136,110 @@ export const downloadInvoicePDF = async (invoice: any) => {
         hour: "2-digit", minute: "2-digit",
       });
   const seller = esc(invoice.soldBy?.name || "M S ELECTRIC AND ELECTRONICS");
-  const invoiceType = invoice.type || "Sell";
-  const isCredit = invoiceType === "Credit";
 
   // Extra customer lines, printed under the name — only what was filled in.
   const customerLines: string[] = [
-    invoice.customerPhone,
-    invoice.customerEmail,
+    invoice.customerPhone ? `Phone: ${invoice.customerPhone}` : "",
+    invoice.customerEmail ? `Email: ${invoice.customerEmail}` : "",
     [invoice.customerAddress, invoice.customerCity].filter(Boolean).join(", "),
   ].filter(Boolean);
+
   const documentTitle = isCredit
     ? "CREDIT SALE RECEIPT"
-    : invoiceType === "Repair"
-      ? "REPAIR INVOICE"
+    : isRepair
+      ? (isCustomerRepair ? "CUSTOMER REPAIR RECEIPT" : "REPAIR DISPATCH CHALLAN")
       : "SALES INVOICE";
 
-  // 5. Clean, centered HTML with proper sizing
+  const watermarkText = isCredit 
+    ? "CREDIT" 
+    : isRepair 
+      ? (isCustomerRepair ? "CUSTOMER REPAIR" : "CHALLAN") 
+      : "INVOICE";
+
+  // 5. Clean, centered HTML with proper sizing without 100vh stretching
   const html = `
-    <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f9fafb;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;">
-      <div style="max-width:650px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:hidden;position:relative;">
+    <div style="font-family:'Segoe UI',Arial,sans-serif;background:#ffffff;padding:16px;display:flex;justify-content:center;align-items:flex-start;">
+      <div style="max-width:650px;width:100%;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;position:relative;">
 
         <!-- Watermark Background -->
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-45deg);font-size:90px;font-weight:900;color:rgba(0,0,0,0.03);white-space:nowrap;pointer-events:none;user-select:none;z-index:0;">
-          ${isCredit ? "CREDIT" : invoiceType === "Repair" ? "REPAIR" : "SELL"}
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:72px;font-weight:900;color:rgba(0,0,0,0.03);white-space:nowrap;pointer-events:none;user-select:none;z-index:0;letter-spacing:4px;">
+          ${watermarkText}
         </div>
 
         <!-- INNER CONTENT -->
-        <div style="padding:28px 32px;position:relative;z-index:1;">
+        <div style="padding:24px 28px;position:relative;z-index:1;">
 
           <!-- HEADER -->
-          <div style="text-align:center;border-bottom:2px solid #1f2937;padding-bottom:16px;margin-bottom:24px;">
-            <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:4px;">M S ELECTRIC AND ELECTRONICS</div>
-            <div style="font-size:12px;color:#6b7280;margin:4px 0;">Shop C15/C17, Quality Godown, Shershah</div>
-            <div style="font-size:12px;color:#6b7280;margin:4px 0;">Phone: Adnan +92 333 3424083</div>
-            <div style="font-size:16px;font-weight:700;letter-spacing:3px;margin-top:12px;color:#1f2937;">
+          <div style="text-align:center;border-bottom:2px solid #1f2937;padding-bottom:14px;margin-bottom:20px;">
+            <div style="font-size:22px;font-weight:800;color:#111827;letter-spacing:0.5px;margin-bottom:3px;">M S ELECTRIC AND ELECTRONICS</div>
+            <div style="font-size:11px;color:#6b7280;margin:2px 0;">Shop C15/C17, Quality Godown, Shershah, Karachi</div>
+            <div style="font-size:11px;color:#6b7280;margin:2px 0;">Contact: Adnan (+92 333 3424083)</div>
+            <div style="font-size:14px;font-weight:800;letter-spacing:2.5px;margin-top:10px;color:#1f2937;text-transform:uppercase;">
               ${documentTitle}
             </div>
           </div>
 
           <!-- META INFO -->
-          <div style="display:flex;justify-content:space-between;margin-bottom:24px;font-size:12px;background:#f9fafb;padding:12px 16px;border-radius:8px;border:1px solid #e5e7eb;">
-            <div><span style="font-weight:600;color:#4b5563;">${isCredit ? "Receipt No" : "Invoice No"}:</span> <span style="color:#111827;">${invoiceNo}</span></div>
-            <div><span style="font-weight:600;color:#4b5563;">Date:</span> <span style="color:#111827;">${dateStr}</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:20px;font-size:11px;background:#f9fafb;padding:10px 14px;border-radius:8px;border:1px solid #e5e7eb;">
+            <div><span style="font-weight:600;color:#4b5563;">${isRepair ? "Challan / Inv No" : isCredit ? "Receipt No" : "Invoice No"}:</span> <span style="color:#111827;font-weight:700;">${invoiceNo}</span></div>
+            <div><span style="font-weight:600;color:#4b5563;">Date:</span> <span style="color:#111827;font-weight:600;">${dateStr}</span></div>
+          </div>
+
+          <!-- PARTY DETAILS (CUSTOMER / VENDOR) -->
+          <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;padding:12px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;font-size:12px;">
+            <div style="flex:1;">
+              <div style="font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:1px;color:#64748b;margin-bottom:4px;">
+                ${isRepair ? (isCustomerRepair ? "Customer Information" : "Sender / Store Details") : "Billed To"}
+              </div>
+              <div style="font-weight:700;color:#0f172a;font-size:13px;">${esc(invoice.customerName || (isCustomerRepair ? "Walk-in Customer" : "M S Electric Store Defective Stock"))}</div>
+              ${customerLines.map(line => `<div style="color:#475569;margin-top:2px;font-size:11px;">${esc(line)}</div>`).join("")}
+            </div>
+
+            ${isRepair && invoice.repairVendor?.name ? `
+            <div style="flex:1;text-align:right;">
+              <div style="font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:1px;color:#64748b;margin-bottom:4px;">
+                Assigned Repair Vendor
+              </div>
+              <div style="font-weight:700;color:#0f172a;font-size:13px;">${esc(invoice.repairVendor.name)}</div>
+              ${invoice.repairVendor.phone ? `<div style="color:#475569;margin-top:2px;font-size:11px;">Ph: ${esc(invoice.repairVendor.phone)}</div>` : ""}
+              ${invoice.repairVendor.address ? `<div style="color:#475569;margin-top:2px;font-size:11px;">${esc(invoice.repairVendor.address)}</div>` : ""}
+            </div>` : ""}
           </div>
 
           <!-- ITEMS TABLE -->
-          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
             <thead>
-              <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
-                <th style="padding:12px;text-align:left;font-size:12px;font-weight:600;color:#4b5563;">Item</th>
-                <th style="padding:12px;text-align:center;font-size:12px;font-weight:600;color:#4b5563;width:70px;">Qty</th>
-                <th style="padding:12px;text-align:right;font-size:12px;font-weight:600;color:#4b5563;width:120px;">Price</th>
+              <tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;">
+                <th style="padding:10px;text-align:left;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.5px;">Product & Details</th>
+                <th style="padding:10px;text-align:center;font-size:11px;font-weight:700;color:#334155;width:60px;text-transform:uppercase;letter-spacing:0.5px;">Qty</th>
+                <th style="padding:10px;text-align:right;font-size:11px;font-weight:700;color:#334155;width:110px;text-transform:uppercase;letter-spacing:0.5px;">${isRepair ? "Est. Charges" : "Price"}</th>
               </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="3" style="padding:40px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="3" style="padding:30px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
           </table>
 
-          <!-- TOTAL & CUSTOMER NAME -->
-          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:2px solid #1f2937;margin-bottom:24px;">
-            <div style="font-size:14px;font-weight:600;color:#374151;text-align:left;">
-              <div>Customer: <span style="font-weight:700;color:#111827;">${esc(invoice.customerName || "Walk-in Customer")}</span></div>
-              ${customerLines
-                .map(
-                  (line: string) =>
-                    `<div style="font-size:12px;font-weight:500;color:#4b5563;margin-top:3px;">${esc(line)}</div>`
-                )
-                .join("")}
+          <!-- TOTAL AMOUNT -->
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:2px solid #1f2937;margin-bottom:20px;">
+            <div style="font-size:12px;color:#64748b;">
+              Total Items: <span style="font-weight:700;color:#0f172a;">${itemsWithUrl.reduce((acc, it) => acc + (it.quantity || 1), 0)}</span>
             </div>
-            <div style="font-size:18px;font-weight:700;color:#111827;text-align:right;">
-              ${isCredit ? "Total Credit" : "Total Payable"}: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
+            <div style="font-size:16px;font-weight:800;color:#0f172a;text-align:right;">
+              ${isRepair ? "Est. Repair Total" : isCredit ? "Total Credit" : "Total Payable"}: <span style="color:#059669;">PKR ${grandTotal.toLocaleString()}</span>
             </div>
           </div>
 
-          <!-- FOOTER -->
-          <div style="text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px;">
-            <div style="margin-bottom:4px;">${isCredit ? "This receipt records items provided on credit." : "Thank you for your purchase!"}</div>
-            <div style="font-weight:500;color:#6b7280;">Seller: ${seller}</div>
+          <!-- FOOTER / TERMS -->
+          <div style="text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:14px;line-height:1.5;">
+            <div style="margin-bottom:3px;font-weight:500;color:#64748b;">
+              ${isRepair 
+                ? (isCustomerRepair 
+                    ? "Please present this receipt when collecting your repaired item. Diagnostic and service warranty terms apply."
+                    : "Official repair dispatch challan for vendor processing. Please inspect items upon receipt.")
+                : isCredit 
+                  ? "This receipt records items provided on credit. Payment terms apply." 
+                  : "Thank you for your purchase!"}
+            </div>
+            <div style="font-weight:600;color:#475569;">Authorized Signatory: ${seller}</div>
           </div>
         </div>
       </div>
@@ -248,9 +279,13 @@ export const downloadInvoicePDF = async (invoice: any) => {
   // Add a small delay to ensure rendering is complete
   await new Promise(resolve => setTimeout(resolve, 100));
 
+  const filenamePrefix = isRepair 
+    ? (isCustomerRepair ? "Customer_Repair" : "Repair_Challan") 
+    : (isCredit ? "Credit_Receipt" : "Invoice");
+
   const opts = {
-    margin: [0.5, 0.5, 0.5, 0.5] as [number, number, number, number],
-    filename: `${isCredit ? "Credit_Receipt" : "Invoice"}_${invoiceNo}.pdf`,
+    margin: [0.3, 0.3, 0.3, 0.3] as [number, number, number, number],
+    filename: `${filenamePrefix}_${invoiceNo}.pdf`,
     image: { type: "jpeg" as const, quality: 0.98 },
     html2canvas: {
       scale: 2,

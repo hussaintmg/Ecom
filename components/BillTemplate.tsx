@@ -33,6 +33,9 @@ export interface BillData {
   shopAddress?: string;
   shopPhone?: string;
   type?: string;
+  repairSource?: "customer" | "defective";
+  technicianOrVendor?: string;
+  notes?: string;
 }
 
 const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
@@ -68,6 +71,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
     data.totalPrice ||
     items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
   const isCredit = data.type === "Credit";
+  const isRepair = data.type === "Repair";
+  const isCustomerRepair = isRepair && data.repairSource === "customer";
 
   // Extra customer lines, printed under the name — only what was filled in.
   const customerLines = [
@@ -78,9 +83,11 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
 
   const documentLabel = isCredit
     ? "CREDIT SALE RECEIPT"
-    : data.type === "Repair"
-      ? "REPAIR INVOICE"
-      : "SALES INVOICE";
+    : isCustomerRepair
+      ? "CUSTOMER REPAIR RECEIPT"
+      : isRepair
+        ? "REPAIR DISPATCH CHALLAN"
+        : "SALES INVOICE";
 
   // Convert image URLs to base64 via fetch to avoid CORS issues
   useEffect(() => {
@@ -151,24 +158,46 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
       style={{
         fontFamily: "'Segoe UI', Arial, sans-serif",
         margin: 0,
-        padding: "20px",
+        padding: "16px",
         background: "#f9fafb",
-        minHeight: "100vh",
+        minHeight: "auto",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
       }}
     >
+      <style>{`
+        @media print {
+          #bill-content {
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #ffffff !important;
+            min-height: auto !important;
+            height: auto !important;
+            display: block !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #bill-card-container {
+            box-shadow: none !important;
+            border: none !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            border-radius: 0 !important;
+          }
+        }
+      `}</style>
       <div
+        id="bill-card-container"
         style={{
-          maxWidth: "650px",
+          maxWidth: "680px",
           width: "100%",
           margin: "0 auto",
           background: "#ffffff",
           borderRadius: "12px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
           overflow: "hidden",
-          position: "relative", // Needed for absolute positioning of watermark
+          position: "relative",
         }}
       >
         {/* Watermark Background */}
@@ -178,7 +207,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%) rotate(-45deg)",
-            fontSize: "90px",
+            fontSize: "80px",
             fontWeight: "900",
             color: "rgba(0, 0, 0, 0.03)",
             whiteSpace: "nowrap",
@@ -187,7 +216,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             zIndex: 0,
           }}
         >
-          {isCredit ? "CREDIT" : data.type === "Repair" ? "REPAIR" : "SELL"}
+          {isCredit ? "CREDIT" : isCustomerRepair ? "CUSTOMER REPAIR" : isRepair ? "REPAIR CHALLAN" : "SELL"}
         </div>
 
         {/* Inner Content */}
@@ -227,7 +256,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                 fontWeight: "700",
                 letterSpacing: "3px",
                 marginTop: "12px",
-                color: "#1f2937",
+                color: isCustomerRepair ? "#2563eb" : isRepair ? "#d97706" : "#1f2937",
               }}
             >
               {documentLabel}
@@ -251,17 +280,28 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
           >
             <div>
               <div style={{ fontWeight: "700", color: "#111827", fontSize: "13px", marginBottom: "4px" }}>
-                {data.type === "Repair" ? "Repair Vendor / Workshop:" : isCredit ? "Customer (Credit):" : "Billed To / Customer:"}
+                {isCustomerRepair
+                  ? "Customer Details:"
+                  : isRepair
+                  ? "Repair Workshop / Vendor:"
+                  : isCredit
+                  ? "Customer (Credit):"
+                  : "Billed To / Customer:"}
               </div>
-              <div style={{ fontWeight: "600", color: "#1f2937" }}>
-                {data.customerName || (data.type === "Repair" ? "Repair Vendor" : "Walk-in Customer")}
+              <div style={{ fontWeight: "600", color: "#1f2937", fontSize: "14px" }}>
+                {data.customerName || (isRepair ? "Repair Vendor" : "Walk-in Customer")}
               </div>
               {data.customerPhone && (
-                <div style={{ color: "#4b5563" }}>Phone: {data.customerPhone}</div>
+                <div style={{ color: "#4b5563", marginTop: "2px" }}>Phone: {data.customerPhone}</div>
               )}
               {(data.customerAddress || data.customerCity) && (
-                <div style={{ color: "#4b5563" }}>
+                <div style={{ color: "#4b5563", marginTop: "2px" }}>
                   {[data.customerAddress, data.customerCity].filter(Boolean).join(", ")}
+                </div>
+              )}
+              {isCustomerRepair && data.technicianOrVendor && (
+                <div style={{ color: "#2563eb", fontWeight: "600", marginTop: "4px", fontSize: "11px" }}>
+                  Assigned Workshop: {esc(data.technicianOrVendor)}
                 </div>
               )}
             </div>
@@ -269,7 +309,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             <div style={{ textAlign: "right" }}>
               <div>
                 <span style={{ fontWeight: "600", color: "#4b5563" }}>
-                  {data.type === "Repair" ? "Challan / Inv No:" : isCredit ? "Receipt No:" : "Invoice No:"}
+                  {isRepair ? "Challan / Inv No:" : isCredit ? "Receipt No:" : "Invoice No:"}
                 </span>{" "}
                 <span style={{ color: "#111827", fontWeight: "700" }}>{invoiceNo}</span>
               </div>
@@ -310,7 +350,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                     color: "#4b5563",
                   }}
                 >
-                  Item
+                  {isRepair ? "Product & Defect / Instructions" : "Item"}
                 </th>
                 <th
                   style={{
@@ -319,7 +359,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                     fontSize: "12px",
                     fontWeight: "600",
                     color: "#4b5563",
-                    width: "70px",
+                    width: "60px",
                   }}
                 >
                   Qty
@@ -331,10 +371,22 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                     fontSize: "12px",
                     fontWeight: "600",
                     color: "#4b5563",
-                    width: "120px",
+                    width: "100px",
                   }}
                 >
-                  Price
+                  {isRepair ? "Est. Rate" : "Rate"}
+                </th>
+                <th
+                  style={{
+                    padding: "12px",
+                    textAlign: "right",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    color: "#4b5563",
+                    width: "110px",
+                  }}
+                >
+                  Subtotal
                 </th>
               </tr>
             </thead>
@@ -342,6 +394,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               {items.map((item, idx) => {
                 const originalUrl = item.productImage || "";
                 const imgSrc = imgBase64Map[originalUrl] || "";
+                const lineTotal = (item.salePrice || 0) * (item.quantity || 1);
 
                 return (
                   <tr key={idx}>
@@ -360,8 +413,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              width: "50px",
-                              height: "50px",
+                              width: "48px",
+                              height: "48px",
                               borderRadius: "8px",
                               border: "1px solid #e5e7eb",
                               overflow: "hidden",
@@ -385,8 +438,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              width: "50px",
-                              height: "50px",
+                              width: "48px",
+                              height: "48px",
                               borderRadius: "8px",
                               border: "1px solid #e5e7eb",
                               background: "#f3f4f6",
@@ -407,7 +460,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                               fontWeight: "600",
                               color: "#111827",
                               fontSize: "13px",
-                              marginBottom: "4px",
+                              marginBottom: "2px",
                             }}
                           >
                             {esc(item.productName)}
@@ -417,12 +470,12 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                             item.description.trim() !== "No description" && (
                               <div
                                 style={{
-                                  fontSize: "10px",
-                                  color: "#9ca3af",
+                                  fontSize: "11px",
+                                  color: "#6b7280",
                                   marginTop: "2px",
                                 }}
                               >
-                                Desc: {esc(item.description)}
+                                {esc(item.description)}
                               </div>
                             )}
                         </div>
@@ -434,7 +487,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                         borderBottom: "1px solid #f0f0f0",
                         textAlign: "center",
                         verticalAlign: "middle",
-                        fontWeight: "500",
+                        fontWeight: "600",
                         fontSize: "13px",
                         color: "#374151",
                       }}
@@ -447,18 +500,51 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                         borderBottom: "1px solid #f0f0f0",
                         textAlign: "right",
                         verticalAlign: "middle",
-                        fontWeight: "600",
+                        fontWeight: "500",
+                        fontSize: "12px",
+                        color: "#4b5563",
+                      }}
+                    >
+                      Rs. {item.salePrice.toLocaleString()}
+                    </td>
+                    <td
+                      style={{
+                        padding: "12px",
+                        borderBottom: "1px solid #f0f0f0",
+                        textAlign: "right",
+                        verticalAlign: "middle",
+                        fontWeight: "700",
                         fontSize: "13px",
                         color: "#059669",
                       }}
                     >
-                      Rs. {item.salePrice.toLocaleString()}
+                      Rs. {lineTotal.toLocaleString()}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+
+          {/* Notes / Terms if available */}
+          {data.notes && (
+            <div
+              style={{
+                marginBottom: "20px",
+                padding: "10px 14px",
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: "8px",
+                fontSize: "11px",
+                color: "#4b5563",
+              }}
+            >
+              <strong style={{ color: "#111827" }}>
+                {isRepair ? "Challan / Repair Notes:" : "Notes:"}{" "}
+              </strong>
+              <span>{esc(data.notes)}</span>
+            </div>
+          )}
 
           {/* Total & Customer Name */}
           <div
@@ -480,7 +566,10 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               }}
             >
               <div>
-                Customer: <span style={{ fontWeight: "700", color: "#111827" }}>{esc(data.customerName || "Walk-in Customer")}</span>
+                {isCustomerRepair ? "Customer:" : isRepair ? "Party / Workshop:" : "Customer:"}{" "}
+                <span style={{ fontWeight: "700", color: "#111827" }}>
+                  {esc(data.customerName || "Walk-in Customer")}
+                </span>
               </div>
               {customerLines.map((line) => (
                 <div
@@ -494,7 +583,11 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             <div
               style={{ fontSize: "18px", fontWeight: "700", color: "#111827", textAlign: "right" }}
             >
-              {isCredit ? "Total Credit:" : "Total Payable:"}{" "}
+              {isCredit
+                ? "Total Credit:"
+                : isRepair
+                ? "Total Estimated Charges:"
+                : "Total Payable:"}{" "}
               <span style={{ color: "#059669" }}>
                 PKR {grandTotal.toLocaleString()}
               </span>
@@ -514,10 +607,14 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             <div style={{ marginBottom: "4px" }}>
               {isCredit
                 ? "This receipt records items provided on credit."
+                : isCustomerRepair
+                ? "Please present this receipt when collecting your repaired item. Thank you!"
+                : isRepair
+                ? "Official Dispatch Challan for authorized repair workshop."
                 : "Thank you for your purchase!"}
             </div>
             <div style={{ fontWeight: "500", color: "#6b7280" }}>
-              Seller: {esc(sellerName)}
+              {isRepair ? "Generated By" : "Seller"}: {esc(sellerName)}
             </div>
           </div>
         </div>

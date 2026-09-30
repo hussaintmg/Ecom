@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const vendor = searchParams.get("vendor") || "All";
     const status = searchParams.get("status") || "All";
+    const source = searchParams.get("source") || "All";
     const search = searchParams.get("search") || "";
     const page = Math.max(1, Number(searchParams.get("page") || 1));
     const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit") || 15)));
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
     const result = await InventoryService.getRepairJobs({
       vendor,
       status,
+      source,
       search,
       page,
       limit,

@@ -5,8 +5,30 @@ const RepairJobSchema = new Schema(
     defectiveInventory: {
       type: Schema.Types.ObjectId,
       ref: "DefectiveInventory",
-      required: true,
+      required: false,
+      default: null,
       index: true,
+    },
+    repairSource: {
+      type: String,
+      enum: ["customer", "defective"],
+      default: "defective",
+      index: true,
+    },
+    customerName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    customerPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    customerAddress: {
+      type: String,
+      default: "",
+      trim: true,
     },
     product: {
       type: Schema.Types.ObjectId,

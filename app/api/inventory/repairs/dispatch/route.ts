@@ -16,10 +16,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const result = await InventoryService.dispatchToRepairVendor(body, user.id);
 
+    const isCustomer = body.repairSource === "customer";
+    const displayName = isCustomer ? (body.customerName || body.vendorName || "Customer") : (body.vendorName || "Vendor");
+    const actionLabel = isCustomer ? "Customer Repair Challan generated" : `Dispatched to ${displayName}`;
+
     return NextResponse.json(
       {
         ...result,
-        message: `Successfully dispatched to ${body.vendorName} with Challan #${result.repairInvoiceNo}.`,
+        message: `${actionLabel} with Challan #${result.repairInvoiceNo}.`,
       },
       { status: 201 }
     );

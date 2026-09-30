@@ -134,7 +134,8 @@ export interface BulkRepairDefectiveInput {
 }
 
 export interface DispatchRepairItemInput {
-  defectiveId: string;
+  defectiveId?: string;
+  productId?: string;
   quantity: number;
   defectReason?: string;
   estimatedCost?: number;
@@ -142,9 +143,13 @@ export interface DispatchRepairItemInput {
 }
 
 export interface DispatchRepairVendorInput {
+  repairSource?: "customer" | "defective";
   vendorName: string;
   vendorPhone?: string;
   vendorAddress?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
   expectedReturnDate?: string | Date;
   notes?: string;
   items: DispatchRepairItemInput[];
@@ -640,6 +645,31 @@ export class InventoryService {
       throw new Error(
         `Total outcome (${successQty} success + ${failQty} failed = ${successQty + failQty}) must equal repair job quantity (${repairJob.quantity}).`
       );
+    }
+
+    // If this is a Customer Repair, do NOT alter store defective inventory or product stock!
+    if (repairJob.repairSource === "customer" || !repairJob.defectiveInventory) {
+      await StockLog.create({
+        product: repairJob.product,
+        change: 0,
+        description: `Customer Repair Completed: ${successQty} repaired, ${failQty} failed for customer ${repairJob.customerName || "Customer"} (Actual Cost/Charges: Rs. ${actualCost.toLocaleString()})`,
+        previousStock: 0,
+        resultingStock: 0,
+        quantity: repairJob.quantity,
+        movementType: successQty > 0 ? "repair_success" : "repair_failed",
+        fromState: "repairing",
+        toState: "customer",
+        repairJobId: repairJob._id,
+        performedBy: userId || null,
+        notes: input.notes?.trim() || "",
+      });
+
+      return {
+        success: true,
+        repairJob,
+        defective: null,
+        newSellableStock: 0,
+      };
     }
 
     const defective = await DefectiveInventory.findById(repairJob.defectiveInventory);
@@ -1877,11 +1907,24 @@ export class InventoryService {
     await connectDB();
     ensureModels();
 
-    if (!input.vendorName || !input.vendorName.trim()) {
-      throw new Error("Vendor / Technician name is required.");
+    const repairSource = input.repairSource === "customer" ? "customer" : "defective";
+
+    const vendorName = (input.vendorName || (input as any).vendor?.name || "").trim();
+    const vendorPhone = (input.vendorPhone || (input as any).vendor?.phone || "").trim();
+    const vendorAddress = (input.vendorAddress || (input as any).vendor?.address || "").trim();
+    const customerName = (input.customerName || (input as any).customer?.name || "").trim();
+    const customerPhone = (input.customerPhone || (input as any).customer?.phone || "").trim();
+    const customerAddress = (input.customerAddress || (input as any).customer?.address || "").trim();
+
+    if (repairSource === "customer" && !customerName && !vendorName) {
+      throw new Error("Customer Name is required for Customer Repair.");
     }
+    if (repairSource === "defective" && !vendorName) {
+      throw new Error("Vendor / Technician name is required for Defective Stock Dispatch.");
+    }
+
     if (!input.items || !Array.isArray(input.items) || input.items.length === 0) {
-      throw new Error("At least one defective item must be dispatched.");
+      throw new Error("At least one item must be added for repair.");
     }
 
     const now = new Date();
@@ -1901,42 +1944,69 @@ export class InventoryService {
 
       const estCost = Math.max(0, Number(it.estimatedCost) || 0);
 
-      // Atomically decrement available defective stock
-      const defective = await DefectiveInventory.findOneAndUpdate(
-        {
-          _id: it.defectiveId,
-          availableDefectiveQuantity: { $gte: qty },
-        },
-        {
-          $inc: {
-            availableDefectiveQuantity: -qty,
-            quantityRepairing: qty,
+      let productId = it.productId;
+      let defectiveId: string | null = (it.defectiveId || (it as any).defectiveInventoryId) || null;
+      let defectReason = it.defectReason || (it as any).defectDescription || "Reported Fault";
+      let product: any = null;
+
+      if (repairSource === "defective") {
+        if (!defectiveId) {
+          throw new Error("Defective item ID is required for defective stock repair.");
+        }
+        // Atomically decrement available defective stock
+        const defective = await DefectiveInventory.findOneAndUpdate(
+          {
+            _id: defectiveId,
+            availableDefectiveQuantity: { $gte: qty },
           },
-        },
-        { returnDocument: "after" }
-      );
+          {
+            $inc: {
+              availableDefectiveQuantity: -qty,
+              quantityRepairing: qty,
+            },
+          },
+          { returnDocument: "after" }
+        );
 
-      if (!defective) {
-        throw new Error("Insufficient available defective quantity or batch not found.");
-      }
+        if (!defective) {
+          throw new Error("Insufficient available defective quantity or batch not found.");
+        }
 
-      if (defective.availableDefectiveQuantity === 0) {
-        defective.status = "In Repair";
+        if (defective.availableDefectiveQuantity === 0) {
+          defective.status = "In Repair";
+        } else {
+          defective.status = "Partially In Repair";
+        }
+        await defective.save();
+
+        productId = defective.product?.toString();
+        defectiveId = defective._id.toString();
+        defectReason = it.defectReason || defective.defectReason || "Reported Fault";
+        product = await Product.findById(productId);
       } else {
-        defective.status = "Partially In Repair";
+        // Customer Repair: product selected from catalog, no warehouse stock deducted
+        if (!productId) {
+          throw new Error("Product must be selected for customer repair.");
+        }
+        product = await Product.findById(productId);
+        if (!product) {
+          throw new Error(`Product not found with ID ${productId}`);
+        }
+        defectReason = it.defectReason || "Customer Reported Fault";
       }
-      await defective.save();
-
-      const product = await Product.findById(defective.product);
 
       const repairJob = await RepairJob.create({
-        defectiveInventory: defective._id,
-        product: defective.product,
+        defectiveInventory: defectiveId || undefined,
+        product: product._id,
         quantity: qty,
-        technicianOrVendor: input.vendorName.trim(),
+        repairSource,
+        technicianOrVendor: vendorName || (repairSource === "customer" ? "Customer Service" : "Vendor"),
         repairInvoiceNo,
-        vendorPhone: input.vendorPhone?.trim() || "",
-        vendorAddress: input.vendorAddress?.trim() || "",
+        vendorPhone: vendorPhone || "",
+        vendorAddress: vendorAddress || "",
+        customerName: customerName || (repairSource === "customer" ? vendorName : ""),
+        customerPhone: customerPhone || "",
+        customerAddress: customerAddress || "",
         estimatedCost: estCost,
         actualCost: 0,
         startDate: now,
@@ -1945,21 +2015,38 @@ export class InventoryService {
         status: "In Progress",
       });
 
-      await StockLog.create({
-        product: defective.product,
-        change: 0,
-        description: `Dispatched to Repair Vendor: ${qty} units sent to ${input.vendorName.trim()} (Challan: ${repairInvoiceNo})`,
-        previousStock: product?.stock || 0,
-        resultingStock: product?.stock || 0,
-        quantity: qty,
-        movementType: "repair_start",
-        fromState: "defective",
-        toState: "repairing",
-        defectiveId: defective._id,
-        repairJobId: repairJob._id,
-        performedBy: userId || null,
-        notes: input.notes?.trim() || "",
-      });
+      if (repairSource === "defective") {
+        await StockLog.create({
+          product: product._id,
+          change: 0,
+          description: `Dispatched to Repair Vendor: ${qty} units sent to ${vendorName} (Challan: ${repairInvoiceNo})`,
+          previousStock: product?.stock || 0,
+          resultingStock: product?.stock || 0,
+          quantity: qty,
+          movementType: "repair_start",
+          fromState: "defective",
+          toState: "repairing",
+          defectiveId: defectiveId,
+          repairJobId: repairJob._id,
+          performedBy: userId || null,
+          notes: input.notes?.trim() || "",
+        });
+      } else {
+        await StockLog.create({
+          product: product._id,
+          change: 0,
+          description: `Customer Repair Received: ${qty} units of ${product.name} from customer ${customerName || "Customer"} (Challan: ${repairInvoiceNo})`,
+          previousStock: product?.stock || 0,
+          resultingStock: product?.stock || 0,
+          quantity: qty,
+          movementType: "repair_start",
+          fromState: "customer",
+          toState: "repairing",
+          repairJobId: repairJob._id,
+          performedBy: userId || null,
+          notes: input.notes?.trim() || "",
+        });
+      }
 
       let categoryId = product?.category;
       if (!categoryId) {
@@ -1968,11 +2055,11 @@ export class InventoryService {
       }
 
       invoiceProducts.push({
-        product: defective.product,
+        product: product._id,
         category: categoryId,
         quantity: qty,
         salePrice: estCost,
-        description: `Defect: ${defective.defectReason}${it.notes ? ` - ${it.notes}` : ""}`,
+        description: `Defect: ${defectReason}${it.notes ? ` - ${it.notes}` : ""}`,
       });
 
       totalEstimatedCost += estCost * qty;
@@ -1980,21 +2067,33 @@ export class InventoryService {
         ...repairJob.toObject(),
         productName: product?.name || "Product",
         productImage: product?.images?.[0]?.url || "",
-        defectReason: defective.defectReason,
+        defectReason,
       });
     }
 
+    const billCustomerName = repairSource === "customer"
+      ? (customerName || vendorName || "Valued Customer")
+      : (vendorName || "Repair Vendor");
+
+    const billCustomerPhone = repairSource === "customer"
+      ? (customerPhone || vendorPhone || "")
+      : (vendorPhone || "");
+
+    const billCustomerAddress = repairSource === "customer"
+      ? (customerAddress || vendorAddress || "")
+      : (vendorAddress || "");
+
     // Create Invoice with type="Repair"
     const invoice = await Invoice.create({
-      customerName: input.vendorName.trim(),
-      customerPhone: input.vendorPhone?.trim() || "",
-      customerAddress: input.vendorAddress?.trim() || "",
+      customerName: billCustomerName,
+      customerPhone: billCustomerPhone,
+      customerAddress: billCustomerAddress,
       type: "Repair",
       products: invoiceProducts,
       totalAmount: totalEstimatedCost,
       stockAlreadyDeducted: true,
       soldBy: userId,
-      customerNote: `Repair Challan: ${repairInvoiceNo}${input.notes ? `. Notes: ${input.notes}` : ""}`,
+      customerNote: `${repairSource === "customer" ? "Customer Repair Receipt" : "Repair Challan"}: ${repairInvoiceNo}${input.notes ? `. Notes: ${input.notes}` : ""}`,
     });
 
     const billData = {
@@ -2004,10 +2103,12 @@ export class InventoryService {
         month: "short",
         year: "numeric",
       }),
-      customerName: input.vendorName.trim(),
-      customerPhone: input.vendorPhone?.trim() || "",
-      customerAddress: input.vendorAddress?.trim() || "",
+      customerName: billCustomerName,
+      customerPhone: billCustomerPhone,
+      customerAddress: billCustomerAddress,
       type: "Repair",
+      repairSource,
+      technicianOrVendor: vendorName,
       totalAmount: totalEstimatedCost,
       products: createdJobs.map((j) => ({
         productName: j.productName,
@@ -2029,11 +2130,75 @@ export class InventoryService {
   }
 
   /**
-   * Fetches repair jobs with optional filters (vendor, status, search, pagination).
+   * Retrieves complete Challan information (all items/jobs and linked Invoice) by invoiceNo.
+   */
+  static async getChallanByInvoiceNo(invoiceNo: string) {
+    await connectDB();
+    ensureModels();
+
+    const jobs = await RepairJob.find({ repairInvoiceNo: invoiceNo })
+      .populate("product", "name price images stock barcode")
+      .populate("defectiveInventory", "defectReason status");
+
+    const invoice = await Invoice.findOne({
+      customerNote: { $regex: invoiceNo, $options: "i" },
+    }).populate("products.product", "name price images stock");
+
+    if (jobs.length === 0 && !invoice) {
+      throw new Error(`Repair Challan ${invoiceNo} not found.`);
+    }
+
+    const firstJob: any = jobs[0] || {};
+    const dateStr = firstJob.startDate || firstJob.createdAt || invoice?.createdAt || new Date();
+
+    const billData = {
+      invoiceNo,
+      date: new Date(dateStr).toLocaleDateString("en-PK", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+      customerName: firstJob.repairSource === "customer"
+        ? (firstJob.customerName || invoice?.customerName || "Customer")
+        : (firstJob.technicianOrVendor || invoice?.customerName || "Repair Vendor"),
+      customerPhone: firstJob.repairSource === "customer"
+        ? (firstJob.customerPhone || invoice?.customerPhone || "")
+        : (firstJob.vendorPhone || invoice?.customerPhone || ""),
+      customerAddress: firstJob.repairSource === "customer"
+        ? (firstJob.customerAddress || invoice?.customerAddress || "")
+        : (firstJob.vendorAddress || invoice?.customerAddress || ""),
+      type: "Repair",
+      repairSource: firstJob.repairSource || (firstJob.defectiveInventory ? "defective" : "customer"),
+      technicianOrVendor: firstJob.technicianOrVendor || "",
+      totalAmount: jobs.reduce((acc, j) => acc + (j.estimatedCost || 0) * (j.quantity || 1), 0),
+      products: jobs.map((j: any) => ({
+        productName: j.product?.name || "Product",
+        quantity: j.quantity,
+        salePrice: j.estimatedCost || 0,
+        description: `Defect: ${j.defectiveInventory?.defectReason || "Reported Fault"}${
+          j.notes ? ` | Note: ${j.notes}` : ""
+        }`,
+        productImage: j.product?.images?.[0]?.url || "",
+      })),
+      notes: firstJob.notes || invoice?.customerNote || "",
+    };
+
+    return {
+      success: true,
+      invoiceNo,
+      repairJobs: jobs,
+      invoice,
+      billData,
+    };
+  }
+
+  /**
+   * Fetches repair jobs with optional filters (vendor, status, source, search, pagination).
    */
   static async getRepairJobs(params: {
     vendor?: string;
     status?: string;
+    source?: string;
     search?: string;
     page?: number;
     limit?: number;
@@ -2052,6 +2217,9 @@ export class InventoryService {
     if (params.status && params.status !== "All") {
       query.status = params.status;
     }
+    if (params.source && params.source !== "All" && params.source !== "all") {
+      query.repairSource = params.source;
+    }
     if (params.search && params.search.trim()) {
       const escaped = params.search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const matchingProductIds = await Product.find({
@@ -2064,6 +2232,8 @@ export class InventoryService {
       query.$or = [
         { repairInvoiceNo: { $regex: escaped, $options: "i" } },
         { technicianOrVendor: { $regex: escaped, $options: "i" } },
+        { customerName: { $regex: escaped, $options: "i" } },
+        { customerPhone: { $regex: escaped, $options: "i" } },
         { notes: { $regex: escaped, $options: "i" } },
         { product: { $in: matchingProductIds.map((p) => p._id) } },
       ];
