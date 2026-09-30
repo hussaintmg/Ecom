@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
 import BillModal from "@/components/BillModal";
@@ -17,6 +17,8 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  X,
   Send,
   FileText,
   User,
@@ -78,6 +80,10 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
   const [defectiveItems, setDefectiveItems] = useState<any[]>([]);
   const [loadingDefective, setLoadingDefective] = useState(false);
   const [selectedDefectiveId, setSelectedDefectiveId] = useState("");
+  const [defectiveDropdownOpen, setDefectiveDropdownOpen] = useState(false);
+  const [defectiveSearchQuery, setDefectiveSearchQuery] = useState("");
+  const defectiveDropdownRef = useRef<HTMLDivElement | null>(null);
+  const defectiveSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Shared item staging inputs
   const [selectedQty, setSelectedQty] = useState("1");
@@ -136,9 +142,8 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     try {
       const res = await fetch("/api/inventory/defective?hasAvailable=true&limit=100");
       const data = await res.json();
-      if (data.defective) {
-        setDefectiveItems(data.defective);
-      }
+      const list = data.defectiveList || data.defective || [];
+      setDefectiveItems(list);
     } catch (err) {
       console.error("Error fetching defective inventory:", err);
     } finally {
@@ -195,6 +200,87 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
         (typeof p.category === "object" && p.category?.name?.toLowerCase().includes(q))
     );
   }, [catalogProducts, productSearch]);
+
+  // Filtered defective items: ONLY available defective inventory items
+  const filteredDefectiveItems = useMemo(() => {
+    if (!defectiveItems || defectiveItems.length === 0) return [];
+    // Show only batches that have availableDefectiveQuantity > 0
+    const available = defectiveItems.filter((d) => (d.availableDefectiveQuantity ?? 0) > 0);
+    if (!defectiveSearchQuery.trim()) return available;
+
+    const q = defectiveSearchQuery.toLowerCase().trim();
+    return available.filter((d) => {
+      const prodName = (d.product?.name || "").toLowerCase();
+      const barcode = (d.product?.barcode || "").toLowerCase();
+      const reason = (d.defectReason || "").toLowerCase();
+      const desc = (d.description || "").toLowerCase();
+      const cat = typeof d.product?.category === "object" ? (d.product?.category?.name || "").toLowerCase() : "";
+
+      return (
+        prodName.includes(q) ||
+        barcode.includes(q) ||
+        reason.includes(q) ||
+        desc.includes(q) ||
+        cat.includes(q)
+      );
+    });
+  }, [defectiveItems, defectiveSearchQuery]);
+
+  // Currently selected defective item details
+  const selectedDefectiveItem = useMemo(() => {
+    if (!selectedDefectiveId) return null;
+    return defectiveItems.find((d) => d._id === selectedDefectiveId) || null;
+  }, [defectiveItems, selectedDefectiveId]);
+
+  // Auto-focus search input when defective dropdown opens
+  useEffect(() => {
+    if (defectiveDropdownOpen) {
+      const timer = setTimeout(() => {
+        defectiveSearchInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      setDefectiveSearchQuery("");
+    }
+  }, [defectiveDropdownOpen]);
+
+  // Click outside to close defective dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        defectiveDropdownRef.current &&
+        !defectiveDropdownRef.current.contains(e.target as Node)
+      ) {
+        setDefectiveDropdownOpen(false);
+      }
+    };
+    if (defectiveDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [defectiveDropdownOpen]);
+
+  const handleSelectDefective = (def: any) => {
+    setSelectedDefectiveId(def._id);
+    if (def.defectReason) {
+      setSelectedDefectReason(def.defectReason);
+    }
+    if (def.description && !selectedItemNote) {
+      setSelectedItemNote(def.description);
+    }
+    setDefectiveDropdownOpen(false);
+    setDefectiveSearchQuery("");
+  };
+
+  const handleClearDefectiveSelection = () => {
+    setSelectedDefectiveId("");
+    setSelectedDefectReason("");
+    setSelectedItemNote("");
+    setSelectedQty("1");
+    setSelectedEstCost("0");
+  };
 
   // Handle stage item for Customer Repair
   const handleStageCustomerItem = () => {
@@ -816,42 +902,250 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
                 {/* Defective Stock Mode: Defective Inventory Batches */}
                 {repairSource === "defective" && (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <label className="text-xs font-bold text-muted-foreground mb-1 block">
-                        Defective Product Batch *
-                      </label>
-                      <select
-                        value={selectedDefectiveId}
-                        onChange={(e) => {
-                          setSelectedDefectiveId(e.target.value);
-                          const d = defectiveItems.find((it) => it._id === e.target.value);
-                          if (d && d.defectReason) {
-                            setSelectedDefectReason(d.defectReason);
-                          }
-                        }}
-                        className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-500/40 cursor-pointer"
-                      >
-                        <option value="">-- Choose Defective Batch --</option>
-                        {defectiveItems.map((def) => {
-                          const name = def.product?.name || "Product";
-                          return (
-                            <option key={def._id} value={def._id}>
-                              {name} • {def.availableDefectiveQuantity} avail • Reason: {def.defectReason}
-                            </option>
-                          );
-                        })}
-                      </select>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                          <span>Defective Inventory Item to Repair</span>
+                          <span className="text-amber-500">*</span>
+                        </label>
+                        <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          {defectiveItems.filter((d) => (d.availableDefectiveQuantity ?? 0) > 0).length} defective batches available
+                        </span>
+                      </div>
+
+                      {/* Custom Searchable Dropdown */}
+                      <div ref={defectiveDropdownRef} className="relative">
+                        {/* Selected Preview or Trigger */}
+                        {selectedDefectiveItem ? (
+                          <div className="w-full rounded-2xl border-2 border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-3 shadow-xs transition-all">
+                            <div
+                              onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                            >
+                              <div className="w-12 h-12 rounded-xl border bg-card flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                                {selectedDefectiveItem.product?.images?.[0]?.url || selectedDefectiveItem.product?.image ? (
+                                  <img
+                                    src={selectedDefectiveItem.product?.images?.[0]?.url || selectedDefectiveItem.product?.image}
+                                    alt={selectedDefectiveItem.product?.name || "Product"}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <Package size={22} className="text-amber-600" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm text-foreground truncate">
+                                    {selectedDefectiveItem.product?.name || "Product"}
+                                  </span>
+                                  {selectedDefectiveItem.product?.barcode && (
+                                    <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+                                      {selectedDefectiveItem.product.barcode}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                                  <span className="font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md text-[11px] border border-amber-500/20">
+                                    Reason: {selectedDefectiveItem.defectReason || "Defective"}
+                                  </span>
+                                  <span className="font-mono text-[11px] font-bold text-foreground">
+                                    {selectedDefectiveItem.availableDefectiveQuantity} available in batch
+                                  </span>
+                                  {selectedDefectiveItem.description && (
+                                    <span className="truncate max-w-[200px] text-[11px] text-muted-foreground">
+                                      • {selectedDefectiveItem.description}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                                className="px-3 py-1.5 rounded-xl border border-amber-500/30 bg-card hover:bg-amber-500/10 text-xs font-bold text-amber-700 dark:text-amber-300 transition-colors cursor-pointer shadow-2xs"
+                              >
+                                Change
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearDefectiveSelection}
+                                title="Clear selection"
+                                className="p-1.5 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                            className={`w-full rounded-2xl border bg-background px-4 py-3 text-left text-sm flex items-center justify-between shadow-2xs hover:border-amber-500/50 hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all cursor-pointer ${
+                              defectiveDropdownOpen ? "border-amber-500 ring-2 ring-amber-500/20" : "border-input"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 text-muted-foreground">
+                              <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+                              <span className="font-medium text-foreground/80">
+                                {loadingDefective ? "Loading defective inventory..." : "Click to search & select defective inventory item..."}
+                              </span>
+                            </span>
+                            <ChevronDown
+                              size={16}
+                              className={`text-muted-foreground shrink-0 transition-transform duration-200 ${
+                                defectiveDropdownOpen ? "rotate-180 text-amber-500" : ""
+                              }`}
+                            />
+                          </button>
+                        )}
+
+                        {/* Searchable Dropdown Popover */}
+                        {defectiveDropdownOpen && (
+                          <div className="absolute z-40 top-full left-0 right-0 mt-2 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+                            {/* Search Header with Auto-Focus Input */}
+                            <div className="p-3 border-b bg-muted/40 space-y-2">
+                              <div className="relative flex items-center">
+                                <Search size={16} className="absolute left-3.5 text-muted-foreground pointer-events-none" />
+                                <input
+                                  ref={defectiveSearchInputRef}
+                                  type="text"
+                                  placeholder="Search defective items by product name, barcode, defect reason..."
+                                  value={defectiveSearchQuery}
+                                  onChange={(e) => setDefectiveSearchQuery(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") setDefectiveDropdownOpen(false);
+                                  }}
+                                  className="w-full bg-background rounded-xl border pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-500/40 placeholder:text-muted-foreground/70"
+                                />
+                                {defectiveSearchQuery && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDefectiveSearchQuery("")}
+                                    className="absolute right-3 p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
+                                <span>Defective inventory items for repair:</span>
+                                <span className="font-bold text-amber-600 dark:text-amber-400">
+                                  {filteredDefectiveItems.length} matching items
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Defective Items List */}
+                            <div className="max-h-64 overflow-y-auto p-2 space-y-1.5 divide-y divide-border/20">
+                              {loadingDefective ? (
+                                <div className="py-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                                  <RefreshCw size={14} className="animate-spin text-amber-500" />
+                                  Loading defective inventory...
+                                </div>
+                              ) : filteredDefectiveItems.length === 0 ? (
+                                <div className="py-8 text-center text-xs text-muted-foreground px-4">
+                                  <AlertTriangle size={24} className="mx-auto mb-2 text-amber-500/60" />
+                                  {defectiveItems.length === 0 ? (
+                                    <p className="font-medium">No defective inventory items with available stock found in system.</p>
+                                  ) : (
+                                    <p>
+                                      No defective items match &quot;<strong>{defectiveSearchQuery}</strong>&quot;.
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                filteredDefectiveItems.map((def) => {
+                                  const isSelected = selectedDefectiveId === def._id;
+                                  const prod = def.product;
+                                  const prodName = prod?.name || "Product";
+                                  const imgUrl = prod?.images?.[0]?.url || prod?.image;
+                                  const availQty = def.availableDefectiveQuantity;
+                                  const reason = def.defectReason || "Defective";
+                                  const desc = def.description;
+
+                                  return (
+                                    <div
+                                      key={def._id}
+                                      onClick={() => handleSelectDefective(def)}
+                                      className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
+                                        isSelected
+                                          ? "bg-amber-500/15 border border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-2xs"
+                                          : "hover:bg-muted/60 border border-transparent"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                                          {imgUrl ? (
+                                            <img src={imgUrl} alt={prodName} className="w-full h-full object-cover" />
+                                          ) : (
+                                            <Package size={18} className="text-muted-foreground/60" />
+                                          )}
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2">
+                                            <div className="font-bold text-xs truncate text-foreground">
+                                              {prodName}
+                                            </div>
+                                            {prod?.barcode && (
+                                              <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+                                                {prod.barcode}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                            <span className="inline-flex items-center font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] border border-amber-500/20">
+                                              Reason: {reason}
+                                            </span>
+                                            {desc && (
+                                              <span className="truncate max-w-[200px] text-[10px] text-muted-foreground/80">
+                                                • {desc}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                                        <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                          {availQty} avail
+                                        </span>
+                                        {isSelected && (
+                                          <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center">
+                                            <Check size={12} />
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-bold text-muted-foreground mb-1 block">
-                          Quantity to Send *
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-muted-foreground block">
+                            Quantity to Send *
+                          </label>
+                          {selectedDefectiveItem && (
+                            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                              Max: {selectedDefectiveItem.availableDefectiveQuantity} units
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="number"
                           min="1"
+                          max={selectedDefectiveItem ? selectedDefectiveItem.availableDefectiveQuantity : undefined}
                           value={selectedQty}
                           onChange={(e) => setSelectedQty(e.target.value)}
                           className="w-full rounded-xl border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-amber-500/40"
@@ -868,6 +1162,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                           value={selectedEstCost}
                           onChange={(e) => setSelectedEstCost(e.target.value)}
                           className="w-full rounded-xl border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-amber-500/40"
+                          placeholder="e.g. 500"
                         />
                       </div>
 

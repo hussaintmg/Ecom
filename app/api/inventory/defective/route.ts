@@ -130,6 +130,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       defectiveList,
+      defective: defectiveList,
       totalRecords,
       totalAllRecords,
       totalPages,
