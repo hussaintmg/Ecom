@@ -29,6 +29,7 @@ import {
   ShoppingBag,
   Info,
   Check,
+  Loader2,
 } from "lucide-react";
 
 interface RepairBillContentProps {
@@ -73,17 +74,28 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
   // ── Customer Repair: Product Catalog State ──
   const [catalogProducts, setCatalogProducts] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [productSearch, setProductSearch] = useState("");
+  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
+  const [catalogDropdownOpen, setCatalogDropdownOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedCustomerProduct, setSelectedCustomerProduct] = useState<any | null>(null);
+  const [customerDropdownPlacement, setCustomerDropdownPlacement] = useState<"down" | "up">("down");
+  const customerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const customerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const isInitialCatalogSearch = useRef(true);
 
   // ── Store Defective Stock State ──
   const [defectiveItems, setDefectiveItems] = useState<any[]>([]);
   const [loadingDefective, setLoadingDefective] = useState(false);
+  const [isSearchingDefective, setIsSearchingDefective] = useState(false);
   const [selectedDefectiveId, setSelectedDefectiveId] = useState("");
+  const [selectedDefectiveRecord, setSelectedDefectiveRecord] = useState<any | null>(null);
   const [defectiveDropdownOpen, setDefectiveDropdownOpen] = useState(false);
   const [defectiveSearchQuery, setDefectiveSearchQuery] = useState("");
+  const [defectiveDropdownPlacement, setDefectiveDropdownPlacement] = useState<"down" | "up">("down");
   const defectiveDropdownRef = useRef<HTMLDivElement | null>(null);
   const defectiveSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const isInitialDefectiveSearch = useRef(true);
 
   // Shared item staging inputs
   const [selectedQty, setSelectedQty] = useState("1");
@@ -189,50 +201,78 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     fetchRepairJobs();
   }, [fetchRepairJobs]);
 
-  // Filtered catalog products for customer repair picker
-  const filteredCatalogProducts = useMemo(() => {
-    if (!productSearch.trim()) return catalogProducts;
-    const q = productSearch.toLowerCase();
-    return catalogProducts.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q) ||
-        (typeof p.category === "object" && p.category?.name?.toLowerCase().includes(q))
-    );
-  }, [catalogProducts, productSearch]);
+  // ── Collision-aware positioning helper ──
+  const checkPlacement = (ref: React.RefObject<HTMLDivElement | null>): "down" | "up" => {
+    if (!ref.current) return "down";
+    const rect = ref.current.getBoundingClientRect();
+    const dropdownHeight = 360; // Estimated height of popover
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
 
-  // Filtered defective items: ONLY available defective inventory items
-  const filteredDefectiveItems = useMemo(() => {
-    if (!defectiveItems || defectiveItems.length === 0) return [];
-    // Show only batches that have availableDefectiveQuantity > 0
-    const available = defectiveItems.filter((d) => (d.availableDefectiveQuantity ?? 0) > 0);
-    if (!defectiveSearchQuery.trim()) return available;
+    if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+      return "up";
+    }
+    return "down";
+  };
 
-    const q = defectiveSearchQuery.toLowerCase().trim();
-    return available.filter((d) => {
-      const prodName = (d.product?.name || "").toLowerCase();
-      const barcode = (d.product?.barcode || "").toLowerCase();
-      const reason = (d.defectReason || "").toLowerCase();
-      const desc = (d.description || "").toLowerCase();
-      const cat = typeof d.product?.category === "object" ? (d.product?.category?.name || "").toLowerCase() : "";
+  const handleToggleCustomerDropdown = () => {
+    if (!catalogDropdownOpen) {
+      setCustomerDropdownPlacement(checkPlacement(customerDropdownRef));
+      setCatalogDropdownOpen(true);
+    } else {
+      setCatalogDropdownOpen(false);
+    }
+  };
 
-      return (
-        prodName.includes(q) ||
-        barcode.includes(q) ||
-        reason.includes(q) ||
-        desc.includes(q) ||
-        cat.includes(q)
-      );
-    });
-  }, [defectiveItems, defectiveSearchQuery]);
+  const handleToggleDefectiveDropdown = () => {
+    if (!defectiveDropdownOpen) {
+      setDefectiveDropdownPlacement(checkPlacement(defectiveDropdownRef));
+      setDefectiveDropdownOpen(true);
+    } else {
+      setDefectiveDropdownOpen(false);
+    }
+  };
 
-  // Currently selected defective item details
-  const selectedDefectiveItem = useMemo(() => {
-    if (!selectedDefectiveId) return null;
-    return defectiveItems.find((d) => d._id === selectedDefectiveId) || null;
-  }, [defectiveItems, selectedDefectiveId]);
+  // Re-calculate placement on window scroll/resize while dropdown is active
+  useEffect(() => {
+    if (!catalogDropdownOpen) return;
+    const onScrollOrResize = () => {
+      setCustomerDropdownPlacement(checkPlacement(customerDropdownRef));
+    };
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [catalogDropdownOpen]);
 
-  // Auto-focus search input when defective dropdown opens
+  useEffect(() => {
+    if (!defectiveDropdownOpen) return;
+    const onScrollOrResize = () => {
+      setDefectiveDropdownPlacement(checkPlacement(defectiveDropdownRef));
+    };
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [defectiveDropdownOpen]);
+
+  // Auto-focus customer search input when dropdown opens
+  useEffect(() => {
+    if (catalogDropdownOpen) {
+      const timer = setTimeout(() => {
+        customerSearchInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      setCatalogSearchQuery("");
+    }
+  }, [catalogDropdownOpen]);
+
+  // Auto-focus defective search input when dropdown opens
   useEffect(() => {
     if (defectiveDropdownOpen) {
       const timer = setTimeout(() => {
@@ -243,6 +283,24 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
       setDefectiveSearchQuery("");
     }
   }, [defectiveDropdownOpen]);
+
+  // Click outside to close customer dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(e.target as Node)
+      ) {
+        setCatalogDropdownOpen(false);
+      }
+    };
+    if (catalogDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [catalogDropdownOpen]);
 
   // Click outside to close defective dropdown
   useEffect(() => {
@@ -262,8 +320,154 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     };
   }, [defectiveDropdownOpen]);
 
+  // ── Debounced Backend Search for Customer Catalog Products (350ms) ──
+  useEffect(() => {
+    if (!catalogDropdownOpen) return;
+    if (isInitialCatalogSearch.current && !catalogSearchQuery.trim() && catalogProducts.length > 0) {
+      isInitialCatalogSearch.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const q = catalogSearchQuery.trim();
+      setIsSearchingCatalog(true);
+      try {
+        const url = q
+          ? `/api/products?search=${encodeURIComponent(q)}&limit=100`
+          : `/api/products?limit=100`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.products) {
+          setCatalogProducts(data.products);
+        }
+      } catch (err) {
+        console.error("Error searching catalog products:", err);
+      } finally {
+        setIsSearchingCatalog(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [catalogSearchQuery, catalogDropdownOpen, catalogProducts.length]);
+
+  // ── Debounced Backend Search for Defective Stock Inventory (350ms) ──
+  useEffect(() => {
+    if (!defectiveDropdownOpen) return;
+    if (isInitialDefectiveSearch.current && !defectiveSearchQuery.trim() && defectiveItems.length > 0) {
+      isInitialDefectiveSearch.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const q = defectiveSearchQuery.trim();
+      setIsSearchingDefective(true);
+      try {
+        const url = q
+          ? `/api/inventory/defective?hasAvailable=true&search=${encodeURIComponent(q)}&limit=100`
+          : `/api/inventory/defective?hasAvailable=true&limit=100`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const list = data.defectiveList || data.defective || [];
+        setDefectiveItems(list);
+      } catch (err) {
+        console.error("Error searching defective inventory:", err);
+      } finally {
+        setIsSearchingDefective(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [defectiveSearchQuery, defectiveDropdownOpen, defectiveItems.length]);
+
+  // Filtered catalog products for customer repair picker (instant typing response)
+  const filteredCatalogProducts = useMemo(() => {
+    if (!catalogSearchQuery.trim()) return catalogProducts;
+    const q = catalogSearchQuery.toLowerCase().trim();
+    return catalogProducts.filter((p) => {
+      const prodName = (p.name || "").toLowerCase();
+      const barcode = (p.barcode || "").toLowerCase();
+      const desc = (p.description || "").toLowerCase();
+      const cat =
+        typeof p.category === "object"
+          ? (p.category?.name || "").toLowerCase()
+          : (p.category || "").toLowerCase();
+
+      return (
+        prodName.includes(q) ||
+        barcode.includes(q) ||
+        desc.includes(q) ||
+        cat.includes(q)
+      );
+    });
+  }, [catalogProducts, catalogSearchQuery]);
+
+  // Filtered defective items: ONLY available defective inventory items (instant typing response)
+  const filteredDefectiveItems = useMemo(() => {
+    if (!defectiveItems || defectiveItems.length === 0) return [];
+    // Show only batches that have availableDefectiveQuantity > 0
+    const available = defectiveItems.filter((d) => (d.availableDefectiveQuantity ?? 0) > 0);
+    if (!defectiveSearchQuery.trim()) return available;
+
+    const q = defectiveSearchQuery.toLowerCase().trim();
+    return available.filter((d) => {
+      const prodName = (d.product?.name || "").toLowerCase();
+      const barcode = (d.product?.barcode || "").toLowerCase();
+      const reason = (d.defectReason || "").toLowerCase();
+      const desc = (d.description || "").toLowerCase();
+      const cat =
+        typeof d.product?.category === "object"
+          ? (d.product?.category?.name || "").toLowerCase()
+          : "";
+
+      return (
+        prodName.includes(q) ||
+        barcode.includes(q) ||
+        reason.includes(q) ||
+        desc.includes(q) ||
+        cat.includes(q)
+      );
+    });
+  }, [defectiveItems, defectiveSearchQuery]);
+
+  // Currently selected customer catalog product details
+  const selectedCustomerProductDetail = useMemo(() => {
+    if (!selectedProductId) return null;
+    return (
+      selectedCustomerProduct ||
+      catalogProducts.find((p) => p._id === selectedProductId) ||
+      null
+    );
+  }, [catalogProducts, selectedProductId, selectedCustomerProduct]);
+
+  // Currently selected defective item details
+  const selectedDefectiveItem = useMemo(() => {
+    if (!selectedDefectiveId) return null;
+    return (
+      selectedDefectiveRecord ||
+      defectiveItems.find((d) => d._id === selectedDefectiveId) ||
+      null
+    );
+  }, [defectiveItems, selectedDefectiveId, selectedDefectiveRecord]);
+
+  const handleSelectProduct = (prod: any) => {
+    setSelectedProductId(prod._id);
+    setSelectedCustomerProduct(prod);
+    setCatalogDropdownOpen(false);
+    setCatalogSearchQuery("");
+  };
+
+  const handleClearCustomerProductSelection = () => {
+    setSelectedProductId("");
+    setSelectedCustomerProduct(null);
+    setSelectedQty("1");
+    setSelectedEstCost("0");
+    setSelectedDefectReason("");
+    setSelectedItemNote("");
+  };
+
   const handleSelectDefective = (def: any) => {
     setSelectedDefectiveId(def._id);
+    setSelectedDefectiveRecord(def);
     if (def.defectReason) {
       setSelectedDefectReason(def.defectReason);
     }
@@ -276,6 +480,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
   const handleClearDefectiveSelection = () => {
     setSelectedDefectiveId("");
+    setSelectedDefectiveRecord(null);
     setSelectedDefectReason("");
     setSelectedItemNote("");
     setSelectedQty("1");
@@ -285,11 +490,14 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
   // Handle stage item for Customer Repair
   const handleStageCustomerItem = () => {
     if (!selectedProductId) {
-      toast.error("Please select a product for customer repair.");
+      toast.error("Please select a product from catalog for customer repair.");
       return;
     }
-    const prod = catalogProducts.find((p) => p._id === selectedProductId);
-    if (!prod) return;
+    const prod = selectedCustomerProductDetail;
+    if (!prod) {
+      toast.error("Selected product details not found. Please re-select.");
+      return;
+    }
 
     const qty = parseInt(selectedQty, 10);
     if (isNaN(qty) || qty <= 0) {
@@ -299,6 +507,10 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
     const estCost = parseFloat(selectedEstCost) || 0;
     const defect = selectedDefectReason.trim() || selectedItemNote.trim() || "Customer Reported Fault";
+    const img =
+      prod.images?.[0]?.url ||
+      (typeof prod.images?.[0] === "string" ? prod.images[0] : null) ||
+      prod.image;
 
     // Append to staged items list
     setStagedItems((prev) => [
@@ -307,7 +519,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
         source: "customer",
         productId: prod._id,
         productName: prod.name || "Customer Product",
-        productImage: prod.images?.[0]?.url,
+        productImage: img,
         defectReason: defect,
         quantity: qty,
         estimatedCost: estCost,
@@ -317,6 +529,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
     // Reset selection
     setSelectedProductId("");
+    setSelectedCustomerProduct(null);
     setSelectedQty("1");
     setSelectedEstCost("0");
     setSelectedDefectReason("");
@@ -330,7 +543,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
       toast.error("Please select a defective stock batch.");
       return;
     }
-    const def = defectiveItems.find((d) => d._id === selectedDefectiveId);
+    const def = selectedDefectiveItem;
     if (!def) return;
 
     const qty = parseInt(selectedQty, 10);
@@ -349,6 +562,11 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     const existingIdx = stagedItems.findIndex(
       (it) => it.source === "defective" && it.defectiveId === selectedDefectiveId
     );
+
+    const img =
+      def.product?.images?.[0]?.url ||
+      (typeof def.product?.images?.[0] === "string" ? def.product?.images?.[0] : null) ||
+      def.product?.image;
 
     if (existingIdx >= 0) {
       const updated = [...stagedItems];
@@ -369,7 +587,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
           productId: def.product?._id || def.product,
           defectiveId: def._id,
           productName: def.product?.name || "Product",
-          productImage: def.product?.images?.[0]?.url,
+          productImage: img,
           defectReason: def.defectReason || "Store Defect",
           availableQty: def.availableDefectiveQuantity,
           quantity: qty,
@@ -381,8 +599,10 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
     // Reset selection
     setSelectedDefectiveId("");
+    setSelectedDefectiveRecord(null);
     setSelectedQty("1");
     setSelectedEstCost("0");
+    setSelectedDefectReason("");
     setSelectedItemNote("");
     toast.success("Added defective stock item to challan.");
   };
@@ -695,6 +915,8 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
               onClick={() => {
                 setRepairSource("customer");
                 setSelectedDefectiveId("");
+                setSelectedDefectiveRecord(null);
+                setDefectiveDropdownOpen(false);
               }}
               className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                 repairSource === "customer"
@@ -733,6 +955,8 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
               onClick={() => {
                 setRepairSource("defective");
                 setSelectedProductId("");
+                setSelectedCustomerProduct(null);
+                setCatalogDropdownOpen(false);
               }}
               className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                 repairSource === "defective"
@@ -792,43 +1016,265 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
                 {/* Customer Repair Mode: Catalog Products Picker */}
                 {repairSource === "customer" && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-1">
-                        <label className="text-xs font-bold text-muted-foreground mb-1 block">
-                          Search Product
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                          <span>Choose Customer Product from Catalog</span>
+                          <span className="text-primary">*</span>
                         </label>
-                        <div className="relative">
-                          <Search
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                            size={14}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Type name / model..."
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            className="w-full rounded-xl border bg-background pl-8 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                          />
-                        </div>
+                        <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          Total Products in Catalog ({catalogProducts.length})
+                        </span>
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-muted-foreground mb-1 block">
-                          Choose Product from Catalog *
-                        </label>
-                        <select
-                          value={selectedProductId}
-                          onChange={(e) => setSelectedProductId(e.target.value)}
-                          className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
-                        >
-                          <option value="">-- Select Product --</option>
-                          {filteredCatalogProducts.map((p) => (
-                            <option key={p._id} value={p._id}>
-                              {p.name} {p.price ? `(Mkt: Rs. ${p.price.toLocaleString()})` : ""}
-                            </option>
-                          ))}
-                        </select>
+                      {/* Custom Searchable Dropdown */}
+                      <div ref={customerDropdownRef} className="relative">
+                        {/* Selected Preview or Trigger */}
+                        {selectedCustomerProductDetail ? (
+                          <div className="w-full rounded-2xl border-2 border-primary/30 bg-primary/5 p-3 flex items-center justify-between gap-3 shadow-xs transition-all">
+                            <div
+                              onClick={handleToggleCustomerDropdown}
+                              className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                            >
+                              <div className="w-12 h-12 rounded-xl border bg-card flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                                {selectedCustomerProductDetail.images?.[0]?.url ||
+                                (typeof selectedCustomerProductDetail.images?.[0] === "string" ? selectedCustomerProductDetail.images[0] : null) ||
+                                selectedCustomerProductDetail.image ? (
+                                  <img
+                                    src={
+                                      selectedCustomerProductDetail.images?.[0]?.url ||
+                                      (typeof selectedCustomerProductDetail.images?.[0] === "string" ? selectedCustomerProductDetail.images[0] : null) ||
+                                      selectedCustomerProductDetail.image
+                                    }
+                                    alt={selectedCustomerProductDetail.name || "Product"}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <ShoppingBag size={22} className="text-primary" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm text-foreground truncate">
+                                    {selectedCustomerProductDetail.name || "Product"}
+                                  </span>
+                                  {selectedCustomerProductDetail.barcode && (
+                                    <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+                                      {selectedCustomerProductDetail.barcode}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                                  {selectedCustomerProductDetail.category && (
+                                    <span className="font-semibold text-primary bg-primary/15 px-2 py-0.5 rounded-md text-[11px] border border-primary/20">
+                                      {typeof selectedCustomerProductDetail.category === "object"
+                                        ? selectedCustomerProductDetail.category?.name
+                                        : selectedCustomerProductDetail.category}
+                                    </span>
+                                  )}
+                                  <span className="font-semibold text-muted-foreground text-[11px]">
+                                    Market Price: <strong className="text-foreground">Rs. {(selectedCustomerProductDetail.price || 0).toLocaleString()}</strong>
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground">
+                                    • Store Inventory: {(selectedCustomerProductDetail.stock ?? 0) > 0 ? `${selectedCustomerProductDetail.stock} units` : "0 in store (Catalog Item)"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={handleToggleCustomerDropdown}
+                                className="px-3 py-1.5 rounded-xl border border-primary/30 bg-card hover:bg-primary/10 text-xs font-bold text-primary transition-colors cursor-pointer shadow-2xs"
+                              >
+                                Change
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearCustomerProductSelection}
+                                title="Clear selection"
+                                className="p-1.5 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleToggleCustomerDropdown}
+                            className={`w-full rounded-2xl border bg-background px-4 py-3 text-left text-sm flex items-center justify-between shadow-2xs hover:border-primary/50 hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all cursor-pointer ${
+                              catalogDropdownOpen ? "border-primary ring-2 ring-primary/20" : "border-input"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 text-muted-foreground">
+                              <ShoppingBag size={18} className="text-primary shrink-0" />
+                              <span className="font-medium text-foreground/80">
+                                {loadingCatalog
+                                  ? "Loading catalog products..."
+                                  : "Click to search & select product from catalog..."}
+                              </span>
+                            </span>
+                            <ChevronDown
+                              size={16}
+                              className={`text-muted-foreground shrink-0 transition-transform duration-200 ${
+                                catalogDropdownOpen ? "rotate-180 text-primary" : ""
+                              }`}
+                            />
+                          </button>
+                        )}
+
+                        {/* Searchable Dropdown Popover */}
+                        {catalogDropdownOpen && (
+                          <div
+                            className={`absolute z-50 left-0 right-0 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden duration-150 ${
+                              customerDropdownPlacement === "up"
+                                ? "bottom-full mb-2 origin-bottom animate-in fade-in-50 zoom-in-95"
+                                : "top-full mt-2 origin-top animate-in fade-in-50 zoom-in-95"
+                            }`}
+                          >
+                            {/* Search Header with Auto-Focus Input */}
+                            <div className="p-3 border-b bg-muted/40 space-y-2">
+                              <div className="relative flex items-center">
+                                <Search size={16} className="absolute left-3.5 text-muted-foreground pointer-events-none" />
+                                <input
+                                  ref={customerSearchInputRef}
+                                  type="text"
+                                  placeholder="Search catalog by product name, model, barcode..."
+                                  value={catalogSearchQuery}
+                                  onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") setCatalogDropdownOpen(false);
+                                  }}
+                                  className="w-full bg-background rounded-xl border pl-10 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground/70"
+                                />
+                                <div className="absolute right-3 flex items-center gap-1.5">
+                                  {isSearchingCatalog && (
+                                    <Loader2 size={16} className="animate-spin text-primary shrink-0" />
+                                  )}
+                                  {catalogSearchQuery && !isSearchingCatalog && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCatalogSearchQuery("")}
+                                      className="p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
+                                <span>Total catalog items for customer repair:</span>
+                                <span className="font-bold text-primary">
+                                  {filteredCatalogProducts.length} matching products
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Catalog Products List */}
+                            <div className="max-h-72 overflow-y-auto p-2 space-y-1.5 divide-y divide-border/20">
+                              {loadingCatalog ? (
+                                <div className="py-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                                  <RefreshCw size={14} className="animate-spin text-primary" />
+                                  Loading catalog products...
+                                </div>
+                              ) : filteredCatalogProducts.length === 0 ? (
+                                <div className="py-8 text-center text-xs text-muted-foreground px-4">
+                                  <ShoppingBag size={24} className="mx-auto mb-2 text-primary/60" />
+                                  <p>
+                                    No products found matching &quot;<strong>{catalogSearchQuery}</strong>&quot;.
+                                  </p>
+                                </div>
+                              ) : (
+                                filteredCatalogProducts.map((p) => {
+                                  const isSelected = selectedProductId === p._id;
+                                  const imgUrl =
+                                    p.images?.[0]?.url ||
+                                    (typeof p.images?.[0] === "string" ? p.images[0] : null) ||
+                                    p.image;
+                                  const catName =
+                                    typeof p.category === "object" ? p.category?.name : p.category;
+
+                                  return (
+                                    <div
+                                      key={p._id}
+                                      onClick={() => handleSelectProduct(p)}
+                                      className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
+                                        isSelected
+                                          ? "bg-primary/15 border border-primary/40 text-foreground shadow-2xs"
+                                          : "hover:bg-muted/70 border border-transparent hover:border-border/50"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform duration-150">
+                                          {imgUrl ? (
+                                            <img
+                                              src={imgUrl}
+                                              alt={p.name}
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : (
+                                            <ShoppingBag
+                                              size={18}
+                                              className="text-muted-foreground/60 group-hover:text-primary transition-colors"
+                                            />
+                                          )}
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2">
+                                            <div className="font-bold text-xs truncate text-foreground group-hover:text-primary transition-colors">
+                                              {p.name}
+                                            </div>
+                                            {p.barcode && (
+                                              <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border shrink-0">
+                                                {p.barcode}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                            {catName && (
+                                              <span className="inline-flex items-center font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded text-[10px] border border-primary/20">
+                                                {catName}
+                                              </span>
+                                            )}
+                                            <span className="text-[10px] text-muted-foreground font-medium">
+                                              Mkt: <strong className="text-foreground">Rs. {(p.price || 0).toLocaleString()}</strong>
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground/80">
+                                              • Stock: {(p.stock ?? 0) > 0 ? `${p.stock} in store` : "0 in store (Catalog)"}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                                        <div className="text-right hidden sm:block">
+                                          <div className="text-xs font-bold text-foreground">
+                                            Rs. {(p.price || 0).toLocaleString()}
+                                          </div>
+                                          <div className="text-[9px] text-muted-foreground">Retail</div>
+                                        </div>
+                                        {isSelected ? (
+                                          <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                                            <Check size={12} />
+                                          </span>
+                                        ) : (
+                                          <span className="w-5 h-5 rounded-full border border-border group-hover:border-primary/50 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                                            <Plus size={10} className="text-muted-foreground group-hover:text-primary" />
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -921,7 +1367,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                         {selectedDefectiveItem ? (
                           <div className="w-full rounded-2xl border-2 border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-3 shadow-xs transition-all">
                             <div
-                              onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                              onClick={handleToggleDefectiveDropdown}
                               className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
                             >
                               <div className="w-12 h-12 rounded-xl border bg-card flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
@@ -965,7 +1411,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 type="button"
-                                onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                                onClick={handleToggleDefectiveDropdown}
                                 className="px-3 py-1.5 rounded-xl border border-amber-500/30 bg-card hover:bg-amber-500/10 text-xs font-bold text-amber-700 dark:text-amber-300 transition-colors cursor-pointer shadow-2xs"
                               >
                                 Change
@@ -983,7 +1429,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setDefectiveDropdownOpen(!defectiveDropdownOpen)}
+                            onClick={handleToggleDefectiveDropdown}
                             className={`w-full rounded-2xl border bg-background px-4 py-3 text-left text-sm flex items-center justify-between shadow-2xs hover:border-amber-500/50 hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all cursor-pointer ${
                               defectiveDropdownOpen ? "border-amber-500 ring-2 ring-amber-500/20" : "border-input"
                             }`}
@@ -1005,7 +1451,13 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
                         {/* Searchable Dropdown Popover */}
                         {defectiveDropdownOpen && (
-                          <div className="absolute z-40 top-full left-0 right-0 mt-2 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+                          <div
+                            className={`absolute z-50 left-0 right-0 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden duration-150 ${
+                              defectiveDropdownPlacement === "up"
+                                ? "bottom-full mb-2 origin-bottom animate-in fade-in-50 zoom-in-95"
+                                : "top-full mt-2 origin-top animate-in fade-in-50 zoom-in-95"
+                            }`}
+                          >
                             {/* Search Header with Auto-Focus Input */}
                             <div className="p-3 border-b bg-muted/40 space-y-2">
                               <div className="relative flex items-center">
@@ -1019,17 +1471,22 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                                   onKeyDown={(e) => {
                                     if (e.key === "Escape") setDefectiveDropdownOpen(false);
                                   }}
-                                  className="w-full bg-background rounded-xl border pl-10 pr-9 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-500/40 placeholder:text-muted-foreground/70"
+                                  className="w-full bg-background rounded-xl border pl-10 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-500/40 placeholder:text-muted-foreground/70"
                                 />
-                                {defectiveSearchQuery && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setDefectiveSearchQuery("")}
-                                    className="absolute right-3 p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                )}
+                                <div className="absolute right-3 flex items-center gap-1.5">
+                                  {isSearchingDefective && (
+                                    <Loader2 size={16} className="animate-spin text-amber-500 shrink-0" />
+                                  )}
+                                  {defectiveSearchQuery && !isSearchingDefective && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setDefectiveSearchQuery("")}
+                                      className="p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
                                 <span>Defective inventory items for repair:</span>
@@ -1062,45 +1519,55 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                                   const isSelected = selectedDefectiveId === def._id;
                                   const prod = def.product;
                                   const prodName = prod?.name || "Product";
-                                  const imgUrl = prod?.images?.[0]?.url || prod?.image;
+                                  const imgUrl =
+                                    prod?.images?.[0]?.url ||
+                                    (typeof prod?.images?.[0] === "string" ? prod?.images[0] : null) ||
+                                    prod?.image;
                                   const availQty = def.availableDefectiveQuantity;
                                   const reason = def.defectReason || "Defective";
                                   const desc = def.description;
+                                  const catName =
+                                    typeof prod?.category === "object" ? prod?.category?.name : prod?.category;
 
                                   return (
                                     <div
                                       key={def._id}
                                       onClick={() => handleSelectDefective(def)}
-                                      className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
+                                      className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${
                                         isSelected
                                           ? "bg-amber-500/15 border border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-2xs"
-                                          : "hover:bg-muted/60 border border-transparent"
+                                          : "hover:bg-muted/70 border border-transparent hover:border-amber-500/20"
                                       }`}
                                     >
                                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                                        <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                                        <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform duration-150">
                                           {imgUrl ? (
                                             <img src={imgUrl} alt={prodName} className="w-full h-full object-cover" />
                                           ) : (
-                                            <Package size={18} className="text-muted-foreground/60" />
+                                            <Package size={18} className="text-muted-foreground/60 group-hover:text-amber-600 transition-colors" />
                                           )}
                                         </div>
 
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-2">
-                                            <div className="font-bold text-xs truncate text-foreground">
+                                            <div className="font-bold text-xs truncate text-foreground group-hover:text-amber-600 transition-colors">
                                               {prodName}
                                             </div>
                                             {prod?.barcode && (
-                                              <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border">
+                                              <span className="font-mono text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border shrink-0">
                                                 {prod.barcode}
                                               </span>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                          <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                             <span className="inline-flex items-center font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] border border-amber-500/20">
                                               Reason: {reason}
                                             </span>
+                                            {catName && (
+                                              <span className="inline-flex items-center text-muted-foreground text-[10px]">
+                                                ({catName})
+                                              </span>
+                                            )}
                                             {desc && (
                                               <span className="truncate max-w-[200px] text-[10px] text-muted-foreground/80">
                                                 • {desc}
@@ -1114,9 +1581,13 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                                         <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                                           {availQty} avail
                                         </span>
-                                        {isSelected && (
+                                        {isSelected ? (
                                           <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center">
                                             <Check size={12} />
+                                          </span>
+                                        ) : (
+                                          <span className="w-5 h-5 rounded-full border border-border group-hover:border-amber-500/50 group-hover:bg-amber-500/10 flex items-center justify-center transition-colors">
+                                            <Plus size={10} className="text-muted-foreground group-hover:text-amber-600" />
                                           </span>
                                         )}
                                       </div>
