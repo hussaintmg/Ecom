@@ -64,6 +64,8 @@ export const downloadInvoicePDF = async (invoice: any) => {
     rawItems.reduce((s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1), 0);
 
   // 2. Extract image URLs and details
+  const invoiceType = invoice.type || "Sell";
+  const isCredit = invoiceType === "Credit";
   const isRepair = invoiceType === "Repair";
   const isCustomerRepair = isRepair && invoice.repairSource === "customer";
 

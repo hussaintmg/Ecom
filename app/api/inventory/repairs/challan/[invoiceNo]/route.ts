@@ -27,7 +27,6 @@ export async function GET(
     const result = await InventoryService.getChallanByInvoiceNo(decodeURIComponent(invoiceNo));
 
     return NextResponse.json({
-      success: true,
       ...result,
     });
   } catch (error: any) {
