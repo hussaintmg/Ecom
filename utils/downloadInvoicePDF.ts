@@ -1,5 +1,6 @@
 // utils/downloadInvoicePDF.ts
 import html2pdf from "html2pdf.js";
+import { getInvoicePricing } from "@/utils/salePricing";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,9 +60,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
         },
       ];
 
-  const grandTotal =
-    invoice.totalAmount ??
-    rawItems.reduce((s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1), 0);
+  const { items: pricedItems, totalAmount: grandTotal } = getInvoicePricing({ ...invoice, products: rawItems });
 
   // 2. Extract image URLs and details
   const invoiceType = invoice.type || "Sell";
@@ -69,7 +68,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
   const isRepair = invoiceType === "Repair";
   const isCustomerRepair = isRepair && invoice.repairSource === "customer";
 
-  const itemsWithUrl = rawItems.map((item: any) => {
+  const itemsWithUrl = pricedItems.map((item: any) => {
     let imageUrl = "";
     const imgs = item.product?.images;
     if (Array.isArray(imgs) && imgs.length > 0) {
@@ -81,6 +80,8 @@ export const downloadInvoicePDF = async (invoice: any) => {
       productName: item.product?.name || item.productName || "Product",
       quantity: item.quantity ?? 1,
       salePrice: item.salePrice ?? 0,
+      unitPrice: item.unitPrice,
+      lineTotal: item.lineTotal,
       description: item.defectDescription || item.description || "",
       productDescription: item.product?.description || "",
       imageUrl,
@@ -121,7 +122,10 @@ export const downloadInvoicePDF = async (invoice: any) => {
             ${item.quantity}
            </td>
           <td style="padding:10px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:middle;font-weight:600;font-size:12px;color:#059669;">
-            Rs. ${item.salePrice.toLocaleString()}
+            Rs. ${item.unitPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+           </td>
+          <td style="padding:10px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:middle;font-weight:700;font-size:12px;color:#059669;">
+            Rs. ${item.lineTotal.toLocaleString()}
            </td>
         </tr>`;
     })
@@ -214,10 +218,11 @@ export const downloadInvoicePDF = async (invoice: any) => {
               <tr style="background:#f1f5f9;border-bottom:2px solid #cbd5e1;">
                 <th style="padding:10px;text-align:left;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.5px;">Product & Details</th>
                 <th style="padding:10px;text-align:center;font-size:11px;font-weight:700;color:#334155;width:60px;text-transform:uppercase;letter-spacing:0.5px;">Qty</th>
-                <th style="padding:10px;text-align:right;font-size:11px;font-weight:700;color:#334155;width:110px;text-transform:uppercase;letter-spacing:0.5px;">${isRepair ? "Est. Charges" : "Price"}</th>
+                <th style="padding:10px;text-align:right;font-size:11px;font-weight:700;color:#334155;width:95px;text-transform:uppercase;letter-spacing:0.5px;">${isRepair ? "Est. Rate" : "Rate"}</th>
+                <th style="padding:10px;text-align:right;font-size:11px;font-weight:700;color:#334155;width:110px;text-transform:uppercase;letter-spacing:0.5px;">Subtotal</th>
               </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="3" style="padding:30px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="4" style="padding:30px;text-align:center;color:#9ca3af;">No items found</td></tr>'}</tbody>
           </table>
 
           <!-- TOTAL AMOUNT -->

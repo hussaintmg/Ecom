@@ -16,6 +16,7 @@ import {
   Package,
 } from "lucide-react";
 import TooltipCell from "@/components/ui/TooltipCell";
+import { getInvoicePricing } from "@/utils/salePricing";
 
 export interface InvoiceCustomerData {
   customerName?: string;
@@ -208,12 +209,8 @@ export const CustomerDetailsModal: React.FC<ModalProps> = ({
   if (!open || !invoice) return null;
 
   const name = invoice.customerName || "Walk-in Customer";
-  const items: any[] = invoice.products ?? [];
+  const { items, totalAmount: totalPrice } = getInvoicePricing(invoice);
   const totalQty = items.reduce((s, p) => s + (p.quantity ?? 0), 0);
-  const totalPrice = items.reduce(
-    (s, p) => s + (p.salePrice ?? 0) * (p.quantity ?? 1),
-    0
-  );
 
   const rows: Row[] = [
     {
@@ -420,7 +417,7 @@ export const CustomerDetailsModal: React.FC<ModalProps> = ({
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-emerald-600 whitespace-nowrap">
-                        {currency} {((p.salePrice ?? 0) * (p.quantity ?? 1)).toLocaleString()}
+                        {currency} {p.lineTotal.toLocaleString()}
                       </p>
                       <p className="text-[11px] text-muted-foreground">Qty: {p.quantity ?? 0}</p>
                     </div>

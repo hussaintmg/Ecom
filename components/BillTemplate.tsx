@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { getInvoicePricing } from "@/utils/salePricing";
 
 export interface BillProductItem {
   productName: string;
@@ -53,7 +54,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
   } = data;
 
   // Unify single and multi-product items list
-  const items: BillProductItem[] = data.products?.length
+  const rawItems: BillProductItem[] = data.products?.length
     ? data.products
     : [
         {
@@ -66,10 +67,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
         },
       ];
 
-  const grandTotal =
-    data.totalAmount ||
-    data.totalPrice ||
-    items.reduce((sum, item) => sum + item.salePrice * item.quantity, 0);
+  const { items, totalAmount: grandTotal } = getInvoicePricing({ ...data, products: rawItems });
   const isCredit = data.type === "Credit";
   const isRepair = data.type === "Repair";
   const isCustomerRepair = isRepair && data.repairSource === "customer";
@@ -394,7 +392,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               {items.map((item, idx) => {
                 const originalUrl = item.productImage || "";
                 const imgSrc = imgBase64Map[originalUrl] || "";
-                const lineTotal = (item.salePrice || 0) * (item.quantity || 1);
+                const { unitPrice, lineTotal } = item;
 
                 return (
                   <tr key={idx}>
@@ -505,7 +503,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                         color: "#4b5563",
                       }}
                     >
-                      Rs. {item.salePrice.toLocaleString()}
+                      Rs. {unitPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </td>
                     <td
                       style={{

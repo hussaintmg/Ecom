@@ -21,6 +21,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { downloadInvoicePDF } from "@/utils/downloadInvoicePDF";
+import { getInvoicePricing } from "@/utils/salePricing";
 
 const initialFilters: InvoiceFilterState = {
   search: "",
@@ -157,10 +158,7 @@ const InvoicesInner = () => {
       (s: number, p: any) => s + (p.quantity ?? 0),
       0
     );
-    const totalPrice = (inv.products ?? []).reduce(
-      (s: number, p: any) => s + (p.salePrice ?? 0) * (p.quantity ?? 1),
-      0
-    );
+    const totalPrice = getInvoicePricing(inv).totalAmount;
 
     return { productNames, categoryNames, descriptions, totalQty, totalPrice };
   };
