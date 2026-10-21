@@ -1296,14 +1296,13 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
                   onClick={() => {
                     setItemToDelete(null);
                     setDeleteConfirmOpen(true);
                   }}
-                  className="h-8 text-xs font-bold bg-red-600 hover:bg-red-700 text-white gap-1"
+                  className="h-8 text-xs font-bold bg-red-600 hover:bg-red-700 active:bg-red-800 text-white gap-1.5 shadow-xs transition-colors"
                 >
-                  <Trash2 size={13} /> Delete Selected
+                  <Trash2 size={13} /> Delete Selected ({selectedDefectiveIds.length})
                 </Button>
               </div>
             )}
