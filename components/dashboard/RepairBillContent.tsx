@@ -125,12 +125,24 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
 
   // ── Complete Repair Modal State ──
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
-  const [activeJobToComplete, setActiveJobToComplete] = useState<any>(null);
-  const [successQty, setSuccessQty] = useState("0");
-  const [failQty, setFailQty] = useState("0");
-  const [actualCost, setActualCost] = useState("0");
-  const [completeNotes, setCompleteNotes] = useState("");
+  const [activeBatchToComplete, setActiveBatchToComplete] = useState<any>(null);
+  const [batchItemsState, setBatchItemsState] = useState<
+    Array<{
+      repairJobId: string;
+      productId: string;
+      productName: string;
+      productImage?: string;
+      defectReason: string;
+      quantity: number;
+      successfulQty: string;
+      failedQty: string;
+      actualCost: string;
+      notes: string;
+    }>
+  >([]);
+  const [batchCompleteNotes, setBatchCompleteNotes] = useState("");
   const [completing, setCompleting] = useState(false);
+  const [expandedChallans, setExpandedChallans] = useState<Record<string, boolean>>({});
 
   // Fetch product catalog for customer repairs
   const fetchCatalogProducts = useCallback(async () => {
@@ -715,44 +727,112 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     }
   };
 
-  // Open complete repair modal
-  const handleOpenCompleteModal = (job: any) => {
-    setActiveJobToComplete(job);
-    setSuccessQty(job.quantity.toString());
-    setFailQty("0");
-    setActualCost(job.estimatedCost ? (job.estimatedCost * job.quantity).toString() : "0");
-    setCompleteNotes("");
+  // Toggle expanded sub-items for a challan row
+  const toggleExpandChallan = (challanNo: string) => {
+    setExpandedChallans((prev) => ({
+      ...prev,
+      [challanNo]: !prev[challanNo],
+    }));
+  };
+
+  // Open complete repair modal for an entire batch/challan
+  const handleOpenCompleteModal = (batch: any) => {
+    setActiveBatchToComplete(batch);
+    const rawItems: any[] =
+      batch.items && batch.items.length > 0
+        ? batch.items
+        : [
+            {
+              _id: batch._id,
+              productId: batch.product?._id || batch.product,
+              productName: batch.product?.name || "Product",
+              productImage:
+                batch.product?.images?.[0]?.url ||
+                (typeof batch.product?.images?.[0] === "string" ? batch.product?.images?.[0] : ""),
+              defectReason: batch.defectiveInventory?.defectReason || batch.notes || "Reported Fault",
+              quantity: batch.totalQuantity || batch.quantity || 1,
+              quantityRepaired: batch.quantityRepaired || 0,
+              quantityFailed: batch.quantityFailed || 0,
+              estimatedCost: batch.estimatedCost || 0,
+              actualCost: batch.actualCost || 0,
+              notes: batch.notes || "",
+            },
+          ];
+
+    const initialStates = rawItems.map((it) => {
+      const remainingQty = Math.max(
+        1,
+        it.quantity - (it.quantityRepaired || 0) - (it.quantityFailed || 0)
+      );
+      return {
+        repairJobId: it._id,
+        productId: it.productId || it.product?._id || it.product,
+        productName: it.productName || it.product?.name || "Product",
+        productImage:
+          it.productImage ||
+          it.product?.images?.[0]?.url ||
+          (typeof it.product?.images?.[0] === "string" ? it.product?.images?.[0] : ""),
+        defectReason: it.defectReason || "Reported Fault",
+        quantity: it.quantity,
+        successfulQty: String(remainingQty),
+        failedQty: "0",
+        actualCost: String(
+          it.actualCost > 0
+            ? it.actualCost
+            : it.estimatedCost
+            ? it.estimatedCost * it.quantity
+            : 0
+        ),
+        notes: it.notes || "",
+      };
+    });
+
+    setBatchItemsState(initialStates);
+    setBatchCompleteNotes("");
     setCompleteModalOpen(true);
   };
 
-  // Submit complete repair
+  // Submit complete repair batch
   const handleSubmitComplete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeJobToComplete) return;
+    if (!activeBatchToComplete || batchItemsState.length === 0) return;
 
-    const sQty = parseInt(successQty, 10);
-    const fQty = parseInt(failQty, 10);
-    if (isNaN(sQty) || sQty < 0 || isNaN(fQty) || fQty < 0) {
-      toast.error("Quantities must be positive whole numbers.");
-      return;
-    }
-    if (sQty + fQty !== activeJobToComplete.quantity) {
-      toast.error(
-        `Total outcome (${sQty} repaired + ${fQty} failed = ${sQty + fQty}) must equal total job quantity (${activeJobToComplete.quantity}).`
-      );
-      return;
+    // Validate quantities for each item
+    for (const it of batchItemsState) {
+      const sQty = parseInt(it.successfulQty, 10);
+      const fQty = parseInt(it.failedQty, 10);
+      if (isNaN(sQty) || sQty < 0 || isNaN(fQty) || fQty < 0) {
+        toast.error(`Please enter valid quantities for "${it.productName}".`);
+        return;
+      }
+      if (sQty + fQty !== it.quantity) {
+        toast.error(
+          `Total (${sQty} repaired + ${fQty} failed = ${sQty + fQty}) must equal sent qty (${it.quantity}) for "${it.productName}".`
+        );
+        return;
+      }
+      const cost = parseFloat(it.actualCost);
+      if (isNaN(cost) || cost < 0) {
+        toast.error(`Please enter a valid repair cost for "${it.productName}".`);
+        return;
+      }
     }
 
     setCompleting(true);
     try {
-      const res = await fetch(`/api/inventory/repairs/${activeJobToComplete._id}/complete`, {
+      const res = await fetch("/api/inventory/repairs/complete-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          successfulQty: sQty,
-          failedQty: fQty,
-          actualCost: parseFloat(actualCost) || 0,
-          notes: completeNotes.trim(),
+          repairInvoiceNo: activeBatchToComplete.repairInvoiceNo,
+          items: batchItemsState.map((it) => ({
+            repairJobId: it.repairJobId,
+            successfulQty: parseInt(it.successfulQty, 10),
+            failedQty: parseInt(it.failedQty, 10),
+            actualCost: parseFloat(it.actualCost) || 0,
+            notes: it.notes.trim(),
+          })),
+          notes: batchCompleteNotes.trim(),
         }),
       });
 
@@ -760,31 +840,41 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
       if (res.ok && data.success) {
         toast.success(
           data.message ||
-            (activeJobToComplete.repairSource === "customer"
+            (activeBatchToComplete.repairSource === "customer"
               ? "Customer repair marked complete! Handed over to customer."
-              : "Repair completed successfully! Stock updated.")
+              : "Repair batch completed successfully! Stock updated.")
         );
+
         setCompleteModalOpen(false);
-        setActiveJobToComplete(null);
+        setActiveBatchToComplete(null);
+
+        // Open BillModal with the generated completion voucher
+        if (data.billData) {
+          setLastBillData(data.billData);
+          setShowBillModal(true);
+        }
+
         fetchRepairJobs();
         fetchDefectiveInventory();
       } else {
-        toast.error(data.error || "Failed to complete repair.");
+        toast.error(data.error || "Failed to complete repair batch.");
       }
     } catch {
-      toast.error("Network error while completing repair.");
+      toast.error("Network error while completing repair batch.");
     } finally {
       setCompleting(false);
     }
   };
 
-  // Reprint / view existing full challan
-  const handleReprintJob = async (job: any) => {
+  // Reprint / view existing full challan or completion bill
+  const handleReprintJob = async (job: any, stage: "dispatch" | "completed" = "dispatch") => {
     const invNo = job.repairInvoiceNo;
     if (invNo) {
-      setReprintingChallanNo(invNo);
+      setReprintingChallanNo(`${invNo}-${stage}`);
       try {
-        const res = await fetch(`/api/inventory/repairs/challan/${encodeURIComponent(invNo)}`);
+        const res = await fetch(
+          `/api/inventory/repairs/challan/${encodeURIComponent(invNo)}?stage=${stage}`
+        );
         const data = await res.json();
         if (res.ok && data.success && data.billData) {
           setLastBillData(data.billData);
@@ -793,19 +883,26 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
           return;
         }
       } catch (err) {
-        console.error("Error fetching full challan:", err);
+        console.error("Error fetching challan:", err);
       }
       setReprintingChallanNo(null);
     }
 
     // Fallback if challan endpoint fails
+    const isCompleted = stage === "completed" || job.status !== "In Progress";
     const billData = {
-      invoiceNo: job.repairInvoiceNo || `REP-${job._id.slice(-6).toUpperCase()}`,
-      date: new Date(job.startDate || job.createdAt).toLocaleDateString("en-PK", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
+      invoiceNo: isCompleted
+        ? `${job.repairInvoiceNo}-CMP`
+        : job.repairInvoiceNo || `REP-${job._id.slice(-6).toUpperCase()}`,
+      challanNo: job.repairInvoiceNo,
+      date: new Date(job.completionDate || job.startDate || job.createdAt).toLocaleDateString(
+        "en-PK",
+        {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }
+      ),
       customerName:
         job.repairSource === "customer"
           ? job.customerName || "Customer"
@@ -813,20 +910,41 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
       customerPhone: job.repairSource === "customer" ? job.customerPhone : job.vendorPhone,
       customerAddress: job.repairSource === "customer" ? job.customerAddress : job.vendorAddress,
       type: "Repair",
-      repairSource: job.repairSource || (job.defectiveInventory ? "defective" : "customer"),
-      technicianOrVendor: job.technicianOrVendor || "",
-      totalAmount: (job.estimatedCost || 0) * job.quantity,
-      products: [
-        {
-          productName: job.product?.name || "Product",
-          quantity: job.quantity,
-          salePrice: job.estimatedCost || 0,
-          description: `Defect: ${job.defectiveInventory?.defectReason || "Reported Fault"}${
-            job.notes ? ` | Note: ${job.notes}` : ""
-          }`,
-          productImage: job.product?.images?.[0]?.url,
-        },
-      ],
+      repairStage: isCompleted ? "completed" : "dispatch",
+      repairSource: job.repairSource,
+      technicianOrVendor: job.technicianOrVendor,
+      totalAmount:
+        isCompleted && job.totalActualCost
+          ? job.totalActualCost
+          : job.totalEstimatedCost || job.estimatedCost || 0,
+      products:
+        job.items && job.items.length > 0
+          ? job.items.map((it: any) => ({
+              productName: it.productName || it.product?.name || "Product",
+              quantity:
+                isCompleted && it.quantityRepaired > 0 ? it.quantityRepaired : it.quantity,
+              salePrice:
+                isCompleted && it.actualCost ? it.actualCost : it.estimatedCost || 0,
+              description: isCompleted
+                ? `Repaired: ${it.quantityRepaired || 0} | Failed: ${it.quantityFailed || 0}`
+                : `Defect: ${it.defectReason || "Reported Fault"}`,
+              productImage: it.productImage || it.product?.images?.[0]?.url || "",
+            }))
+          : [
+              {
+                productName: job.product?.name || "Product",
+                quantity:
+                  isCompleted && job.quantityRepaired > 0
+                    ? job.quantityRepaired
+                    : job.totalQuantity || job.quantity || 1,
+                salePrice:
+                  isCompleted && job.actualCost ? job.actualCost : job.estimatedCost || 0,
+                description: `Defect: ${
+                  job.defectiveInventory?.defectReason || job.notes || "Reported Fault"
+                }`,
+                productImage: job.product?.images?.[0]?.url || "",
+              },
+            ],
       notes: job.notes || "",
     };
     setLastBillData(billData);
@@ -2080,115 +2198,246 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                     {repairJobs.map((job) => {
                       const prodName = job.product?.name || "Product";
                       const isCustomer = job.repairSource === "customer";
-                      return (
-                        <tr key={job._id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-3.5 font-mono font-bold text-foreground">
-                            {job.repairInvoiceNo || `REP-${job._id.slice(-6).toUpperCase()}`}
-                          </td>
-                          <td className="p-3.5">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                isCustomer
-                                  ? "bg-primary/10 text-primary border border-primary/20"
-                                  : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                              }`}
-                            >
-                              {isCustomer ? "Customer Repair" : "Store Defective"}
-                            </span>
-                          </td>
-                          <td className="p-3.5">
-                            {isCustomer ? (
-                              <div>
-                                <div className="font-bold text-foreground">
-                                  {job.customerName || "Customer"}
-                                </div>
-                                {job.customerPhone && (
-                                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                    <Phone size={10} /> {job.customerPhone}
-                                  </div>
-                                )}
-                                {job.technicianOrVendor && (
-                                  <div className="text-[10px] text-primary font-semibold">
-                                    Tech: {job.technicianOrVendor}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div>
-                                <div className="font-bold text-foreground">
-                                  {job.technicianOrVendor}
-                                </div>
-                                {job.vendorPhone && (
-                                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                    <Phone size={10} /> {job.vendorPhone}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3.5">
-                            <div className="font-semibold text-foreground max-w-[180px] truncate">
-                              {prodName}
-                            </div>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-bold">
-                              Defect: {job.defectiveInventory?.defectReason || job.notes || "Reported Fault"}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-center font-mono font-bold text-sm">
-                            {job.quantity}
-                          </td>
-                          <td className="p-3.5 text-center font-mono">
-                            <span className="text-emerald-600 font-bold">+{job.quantityRepaired || 0}</span> /{" "}
-                            <span className="text-red-500 font-bold">-{job.quantityFailed || 0}</span>
-                          </td>
-                          <td className="p-3.5">{getStatusBadge(job.status)}</td>
-                          <td className="p-3.5 text-muted-foreground text-[11px]">
-                            {new Date(job.startDate || job.createdAt).toLocaleDateString("en-PK", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                            {job.expectedReturnDate && (
-                              <div className="text-[10px] text-amber-600 font-bold">
-                                Return by: {new Date(job.expectedReturnDate).toLocaleDateString("en-PK", {
-                                  day: "numeric",
-                                  month: "short",
-                                })}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={reprintingChallanNo === job.repairInvoiceNo}
-                                onClick={() => handleReprintJob(job)}
-                                className="h-7 text-[11px] gap-1 px-2.5 font-bold cursor-pointer"
-                                title="Print / Download Full Challan"
-                              >
-                                {reprintingChallanNo === job.repairInvoiceNo ? (
-                                  <RefreshCw size={12} className="animate-spin" />
-                                ) : (
-                                  <Printer size={12} />
-                                )}
-                                Print Challan
-                              </Button>
+                      const challanNo = job.repairInvoiceNo || `REP-${job._id.slice(-6).toUpperCase()}`;
+                      const isExpanded = !!expandedChallans[challanNo];
+                      const hasMultipleProducts = job.items && job.items.length > 1;
 
-                              {job.status === "In Progress" && (
+                      return (
+                        <React.Fragment key={job._id || challanNo}>
+                          <tr className="hover:bg-muted/30 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-foreground">
+                              <div className="flex items-center gap-1.5">
+                                {hasMultipleProducts && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandChallan(challanNo)}
+                                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                                    title={isExpanded ? "Collapse item details" : "Expand item details"}
+                                  >
+                                    <ChevronDown
+                                      size={14}
+                                      className={`transition-transform duration-200 ${
+                                        isExpanded ? "rotate-180 text-primary" : ""
+                                      }`}
+                                    />
+                                  </button>
+                                )}
+                                <span>{challanNo}</span>
+                              </div>
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  isCustomer
+                                    ? "bg-primary/10 text-primary border border-primary/20"
+                                    : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                }`}
+                              >
+                                {isCustomer ? "Customer Repair" : "Store Defective"}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              {isCustomer ? (
+                                <div>
+                                  <div className="font-bold text-foreground">
+                                    {job.customerName || "Customer"}
+                                  </div>
+                                  {job.customerPhone && (
+                                    <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                      <Phone size={10} /> {job.customerPhone}
+                                    </div>
+                                  )}
+                                  {job.technicianOrVendor && (
+                                    <div className="text-[10px] text-primary font-semibold">
+                                      Tech: {job.technicianOrVendor}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="font-bold text-foreground">
+                                    {job.technicianOrVendor}
+                                  </div>
+                                  {job.vendorPhone && (
+                                    <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                      <Phone size={10} /> {job.vendorPhone}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3.5">
+                              {hasMultipleProducts ? (
+                                <div>
+                                  <div className="font-bold text-foreground flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-black">
+                                      {job.jobsCount || job.items.length} Products
+                                    </span>
+                                    <span className="text-muted-foreground font-normal">
+                                      ({job.totalQuantity || job.quantity} units)
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="text-[11px] text-muted-foreground mt-0.5 max-w-[220px] truncate"
+                                    title={job.items.map((it: any) => `${it.productName} (x${it.quantity})`).join(", ")}
+                                  >
+                                    {job.items.map((it: any) => `${it.productName} (x${it.quantity})`).join(", ")}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandChallan(challanNo)}
+                                    className="text-[10px] text-primary hover:underline font-bold inline-flex items-center gap-0.5 mt-0.5 cursor-pointer"
+                                  >
+                                    {isExpanded ? "Hide items ▲" : "View all items ▼"}
+                                  </button>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="font-semibold text-foreground max-w-[180px] truncate">
+                                    {prodName}
+                                  </div>
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-bold">
+                                    Defect: {job.defectiveInventory?.defectReason || job.notes || "Reported Fault"}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3.5 text-center font-mono font-bold text-sm">
+                              {job.totalQuantity || job.quantity}
+                            </td>
+                            <td className="p-3.5 text-center font-mono">
+                              <span className="text-emerald-600 font-bold">
+                                +{job.totalRepaired ?? job.quantityRepaired ?? 0}
+                              </span>{" "}
+                              /{" "}
+                              <span className="text-red-500 font-bold">
+                                -{job.totalFailed ?? job.quantityFailed ?? 0}
+                              </span>
+                            </td>
+                            <td className="p-3.5">{getStatusBadge(job.status)}</td>
+                            <td className="p-3.5 text-muted-foreground text-[11px]">
+                              {new Date(job.startDate || job.createdAt).toLocaleDateString("en-PK", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                              {job.expectedReturnDate && (
+                                <div className="text-[10px] text-amber-600 font-bold">
+                                  Return by:{" "}
+                                  {new Date(job.expectedReturnDate).toLocaleDateString("en-PK", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3.5 text-center">
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                 <Button
                                   size="sm"
-                                  variant="primary"
-                                  onClick={() => handleOpenCompleteModal(job)}
-                                  className="h-7 text-[11px] gap-1 px-2.5 font-bold cursor-pointer text-white"
-                                  title={isCustomer ? "Hand over to customer" : "Receive repaired stock"}
+                                  variant="outline"
+                                  disabled={reprintingChallanNo === `${challanNo}-dispatch`}
+                                  onClick={() => handleReprintJob(job, "dispatch")}
+                                  className="h-7 text-[11px] gap-1 px-2.5 font-bold cursor-pointer"
+                                  title="Print Dispatch Challan"
                                 >
-                                  <CheckCircle2 size={12} /> {isCustomer ? "Complete" : "Receive Stock"}
+                                  {reprintingChallanNo === `${challanNo}-dispatch` ? (
+                                    <RefreshCw size={12} className="animate-spin" />
+                                  ) : (
+                                    <Printer size={12} />
+                                  )}
+                                  Challan
                                 </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+
+                                {job.status === "In Progress" ? (
+                                  <Button
+                                    size="sm"
+                                    variant="primary"
+                                    onClick={() => handleOpenCompleteModal(job)}
+                                    className="h-7 text-[11px] gap-1 px-2.5 font-bold cursor-pointer text-white"
+                                    title={isCustomer ? "Hand over to customer" : "Receive repaired stock batch"}
+                                  >
+                                    <CheckCircle2 size={12} /> {isCustomer ? "Complete" : "Receive Batch"}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={reprintingChallanNo === `${challanNo}-completed`}
+                                    onClick={() => handleReprintJob(job, "completed")}
+                                    className="h-7 text-[11px] gap-1 px-2.5 font-bold cursor-pointer text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                                    title="Print Completion Voucher / Receipt"
+                                  >
+                                    {reprintingChallanNo === `${challanNo}-completed` ? (
+                                      <RefreshCw size={12} className="animate-spin" />
+                                    ) : (
+                                      <FileText size={12} />
+                                    )}
+                                    Completion Bill
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Expanded sub-row showing all items in this challan */}
+                          {hasMultipleProducts && isExpanded && (
+                            <tr className="bg-muted/15 border-b">
+                              <td colSpan={9} className="p-3 pl-8">
+                                <div className="bg-card border rounded-2xl p-3 shadow-xs">
+                                  <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <span>
+                                      Products in Challan #{challanNo} ({job.items.length} items)
+                                    </span>
+                                    <span>Total Sent: {job.totalQuantity || job.quantity} units</span>
+                                  </div>
+                                  <table className="w-full text-xs text-left">
+                                    <thead>
+                                      <tr className="border-b text-[10px] text-muted-foreground">
+                                        <th className="pb-1.5">Product</th>
+                                        <th className="pb-1.5">Defect Reason</th>
+                                        <th className="pb-1.5 text-center">Sent</th>
+                                        <th className="pb-1.5 text-center">Repaired / Failed</th>
+                                        <th className="pb-1.5 text-right">Cost (PKR)</th>
+                                        <th className="pb-1.5 text-center">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/40">
+                                      {job.items.map((it: any) => (
+                                        <tr key={it._id} className="text-[11px]">
+                                          <td className="py-1.5 font-semibold text-foreground">
+                                            {it.productName || it.product?.name || "Product"}
+                                          </td>
+                                          <td className="py-1.5 text-muted-foreground">
+                                            {it.defectReason || "Reported Fault"}
+                                          </td>
+                                          <td className="py-1.5 text-center font-mono font-bold">
+                                            {it.quantity}
+                                          </td>
+                                          <td className="py-1.5 text-center font-mono">
+                                            <span className="text-emerald-600 font-bold">
+                                              +{it.quantityRepaired || 0}
+                                            </span>{" "}
+                                            /{" "}
+                                            <span className="text-red-500 font-bold">
+                                              -{it.quantityFailed || 0}
+                                            </span>
+                                          </td>
+                                          <td className="py-1.5 text-right font-mono text-emerald-600 font-bold">
+                                            Rs. {(it.actualCost || it.estimatedCost || 0).toLocaleString()}
+                                          </td>
+                                          <td className="py-1.5 text-center">
+                                            {getStatusBadge(it.status || job.status)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -2228,133 +2477,201 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
         </div>
       )}
 
-      {/* ─── MODAL 1: RECEIVE REPAIRED STOCK / COMPLETE REPAIR ─── */}
-      {completeModalOpen && activeJobToComplete && (
+      {/* ─── MODAL 1: RECEIVE REPAIRED STOCK / COMPLETE REPAIR (BATCH) ─── */}
+      {completeModalOpen && activeBatchToComplete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-2xl w-full space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-3 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-xl">
                   <CheckCircle2 size={18} />
                 </div>
                 <div>
-                  <h3 className="font-black text-base">
-                    {activeJobToComplete.repairSource === "customer"
-                      ? "Complete Customer Repair"
-                      : "Receive Repaired Stock"}
+                  <h3 className="font-black text-base text-foreground">
+                    {activeBatchToComplete.repairSource === "customer"
+                      ? "Complete Customer Repair Batch"
+                      : "Receive Repaired Stock Batch"}
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    {activeJobToComplete.repairSource === "customer" ? "Customer: " : "Vendor: "}
+                    Challan #{activeBatchToComplete.repairInvoiceNo} •{" "}
+                    {activeBatchToComplete.repairSource === "customer" ? "Customer: " : "Vendor: "}
                     <strong className="text-foreground">
-                      {activeJobToComplete.repairSource === "customer"
-                        ? activeJobToComplete.customerName || "Customer"
-                        : activeJobToComplete.technicianOrVendor}
+                      {activeBatchToComplete.repairSource === "customer"
+                        ? activeBatchToComplete.customerName || "Customer"
+                        : activeBatchToComplete.technicianOrVendor}
                     </strong>{" "}
-                    (Total {activeJobToComplete.quantity} units)
+                    (Total {activeBatchToComplete.totalQuantity || activeBatchToComplete.quantity} units across{" "}
+                    {batchItemsState.length} product{batchItemsState.length > 1 ? "s" : ""})
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setCompleteModalOpen(false)}
+                className="p-1 rounded-xl text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X size={18} />
+              </button>
             </div>
 
             {/* Informational Banner */}
             <div
-              className={`p-3 rounded-2xl text-xs flex items-start gap-2.5 ${
-                activeJobToComplete.repairSource === "customer"
+              className={`p-3 rounded-2xl text-xs flex items-start gap-2.5 shrink-0 ${
+                activeBatchToComplete.repairSource === "customer"
                   ? "bg-primary/10 text-primary border border-primary/20"
                   : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
               }`}
             >
               <Info size={16} className="shrink-0 mt-0.5" />
               <div>
-                {activeJobToComplete.repairSource === "customer" ? (
+                {activeBatchToComplete.repairSource === "customer" ? (
                   <span>
-                    <strong>Customer Repair Flow:</strong> Successfully repaired items are returned to the customer. Warehouse stock will <strong>not</strong> be increased.
+                    <strong>Customer Repair Flow:</strong> Repaired products are returned to customer.
+                    Store sellable inventory will <strong>not</strong> change.
                   </span>
                 ) : (
                   <span>
-                    <strong>Store Defective Flow:</strong> Successfully repaired items will be added back to <strong>Sellable Store Stock</strong>. Failed items will return to Defective Inventory.
+                    <strong>Store Defective Flow:</strong> Repaired products will be added back to{" "}
+                    <strong>Sellable Store Stock</strong>. Failed units return to Defective
+                    Inventory. Original product selling price remains 100% untouched.
                   </span>
                 )}
               </div>
             </div>
 
-            <form onSubmit={handleSubmitComplete} className="space-y-4">
-              <div className="p-3 bg-muted/40 rounded-2xl text-xs space-y-1">
-                <p>
-                  <strong>Product:</strong> {activeJobToComplete.product?.name || "Product"}
-                </p>
-                <p>
-                  <strong>Challan #:</strong> {activeJobToComplete.repairInvoiceNo}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-emerald-600 block mb-1">
-                    Successfully Repaired *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={activeJobToComplete.quantity}
-                    value={successQty}
-                    onChange={(e) => setSuccessQty(e.target.value)}
-                    className="w-full rounded-xl border border-emerald-500/30 bg-background px-3 py-2 text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500/40"
-                  />
-                  <span className="text-[10px] text-muted-foreground">
-                    {activeJobToComplete.repairSource === "customer"
-                      ? "Ready for customer pickup"
-                      : "Will return to sellable stock"}
-                  </span>
+            <form onSubmit={handleSubmitComplete} className="space-y-4 overflow-y-auto flex-1 pr-1">
+              <div className="border rounded-2xl overflow-hidden">
+                <div className="bg-muted/40 p-2.5 px-3 border-b text-[10px] font-black uppercase text-muted-foreground tracking-wider grid grid-cols-12 gap-2">
+                  <div className="col-span-5">Product & Defect</div>
+                  <div className="col-span-2 text-center">Repaired (Qty)</div>
+                  <div className="col-span-2 text-center">Failed (Qty)</div>
+                  <div className="col-span-3 text-right">Cost (PKR)</div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-red-600 block mb-1">
-                    Failed / Unrepairable *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={activeJobToComplete.quantity}
-                    value={failQty}
-                    onChange={(e) => setFailQty(e.target.value)}
-                    className="w-full rounded-xl border border-red-500/30 bg-background px-3 py-2 text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-red-500/40"
-                  />
-                  <span className="text-[10px] text-muted-foreground">
-                    {activeJobToComplete.repairSource === "customer"
-                      ? "Returned unrepairable"
-                      : "Will return to defective stock"}
+                <div className="divide-y divide-border/50">
+                  {batchItemsState.map((it, idx) => (
+                    <div
+                      key={it.repairJobId}
+                      className="p-3 grid grid-cols-12 gap-2 items-center text-xs"
+                    >
+                      <div className="col-span-5">
+                        <div
+                          className="font-bold text-foreground truncate"
+                          title={it.productName}
+                        >
+                          {it.productName}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Defect: {it.defectReason} •{" "}
+                          <span className="font-bold text-foreground">Sent: {it.quantity}</span>
+                        </div>
+                      </div>
+
+                      <div className="col-span-2 text-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max={it.quantity}
+                          value={it.successfulQty}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBatchItemsState((prev) => {
+                              const next = [...prev];
+                              const s = parseInt(val, 10);
+                              const autoFail =
+                                !isNaN(s) && s <= it.quantity
+                                  ? String(it.quantity - s)
+                                  : next[idx].failedQty;
+                              next[idx] = { ...next[idx], successfulQty: val, failedQty: autoFail };
+                              return next;
+                            });
+                          }}
+                          className="w-full rounded-xl border border-emerald-500/30 bg-background px-2 py-1.5 text-center text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500/40 text-emerald-600"
+                        />
+                      </div>
+
+                      <div className="col-span-2 text-center">
+                        <input
+                          type="number"
+                          min="0"
+                          max={it.quantity}
+                          value={it.failedQty}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBatchItemsState((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], failedQty: val };
+                              return next;
+                            });
+                          }}
+                          className="w-full rounded-xl border border-red-500/30 bg-background px-2 py-1.5 text-center text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-red-500/40 text-red-500"
+                        />
+                      </div>
+
+                      <div className="col-span-3 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          value={it.actualCost}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBatchItemsState((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], actualCost: val };
+                              return next;
+                            });
+                          }}
+                          className="w-full rounded-xl border bg-background px-2 py-1.5 text-right text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/40 text-emerald-600"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Batch Totals Summary */}
+              <div className="p-3 bg-muted/40 rounded-2xl flex items-center justify-between text-xs font-bold">
+                <div className="flex items-center gap-4">
+                  <span className="text-emerald-600">
+                    Total Repaired: +
+                    {batchItemsState.reduce(
+                      (sum, it) => sum + (parseInt(it.successfulQty, 10) || 0),
+                      0
+                    )}
+                  </span>
+                  <span className="text-red-500">
+                    Total Failed: -
+                    {batchItemsState.reduce(
+                      (sum, it) => sum + (parseInt(it.failedQty, 10) || 0),
+                      0
+                    )}
+                  </span>
+                </div>
+                <div className="text-foreground">
+                  Total Repair Cost:{" "}
+                  <span className="text-emerald-600 font-mono text-sm">
+                    PKR{" "}
+                    {batchItemsState
+                      .reduce((sum, it) => sum + (parseFloat(it.actualCost) || 0), 0)
+                      .toLocaleString()}
                   </span>
                 </div>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-muted-foreground block mb-1">
-                  Actual Cost / Repair Charges Paid (PKR)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={actualCost}
-                  onChange={(e) => setActualCost(e.target.value)}
-                  className="w-full rounded-xl border bg-background px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-muted-foreground block mb-1">
-                  Completion Notes / Outcome
+                  Batch Completion Notes / Outcome
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="e.g. Parts replaced, tested OK under load, customer notified..."
-                  value={completeNotes}
-                  onChange={(e) => setCompleteNotes(e.target.value)}
-                  className="w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                  placeholder="e.g. Received from vendor, verified all units, repaired capacitors, invoice cleared..."
+                  value={batchCompleteNotes}
+                  onChange={(e) => setBatchCompleteNotes(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t">
+              <div className="flex justify-end gap-2 pt-2 border-t shrink-0">
                 <Button
                   type="button"
                   variant="outline"
@@ -2370,7 +2687,7 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                   className="text-xs font-bold gap-1 text-white cursor-pointer"
                 >
                   {completing && <RefreshCw size={14} className="animate-spin" />}
-                  {completing ? "Saving..." : "Confirm & Complete"}
+                  {completing ? "Processing Batch..." : "Confirm & Complete Batch"}
                 </Button>
               </div>
             </form>

@@ -35,6 +35,7 @@ export interface BillData {
   shopPhone?: string;
   type?: string;
   repairSource?: "customer" | "defective";
+  repairStage?: "dispatch" | "completed";
   technicianOrVendor?: string;
   notes?: string;
 }
@@ -71,6 +72,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
   const isCredit = data.type === "Credit";
   const isRepair = data.type === "Repair";
   const isCustomerRepair = isRepair && data.repairSource === "customer";
+  const isRepairCompletion = isRepair && (data.repairStage === "completed" || invoiceNo.endsWith("-CMP"));
 
   // Extra customer lines, printed under the name — only what was filled in.
   const customerLines = [
@@ -82,9 +84,9 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
   const documentLabel = isCredit
     ? "CREDIT SALE RECEIPT"
     : isCustomerRepair
-      ? "CUSTOMER REPAIR RECEIPT"
+      ? (isRepairCompletion ? "CUSTOMER REPAIR COMPLETION RECEIPT" : "CUSTOMER REPAIR RECEIPT")
       : isRepair
-        ? "REPAIR DISPATCH CHALLAN"
+        ? (isRepairCompletion ? "REPAIR RETURN & COMPLETION VOUCHER" : "REPAIR DISPATCH CHALLAN")
         : "SALES INVOICE";
 
   // Convert image URLs to base64 via fetch to avoid CORS issues
@@ -214,7 +216,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             zIndex: 0,
           }}
         >
-          {isCredit ? "CREDIT" : isCustomerRepair ? "CUSTOMER REPAIR" : isRepair ? "REPAIR CHALLAN" : "SELL"}
+          {isCredit ? "CREDIT" : isRepairCompletion ? "REPAIRED" : isCustomerRepair ? "CUSTOMER REPAIR" : isRepair ? "REPAIR CHALLAN" : "SELL"}
         </div>
 
         {/* Inner Content */}
@@ -348,7 +350,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                     color: "#4b5563",
                   }}
                 >
-                  {isRepair ? "Product & Defect / Instructions" : "Item"}
+                  {isRepair ? (isRepairCompletion ? "Product & Work Done" : "Product & Defect / Instructions") : "Item"}
                 </th>
                 <th
                   style={{
@@ -372,7 +374,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                     width: "100px",
                   }}
                 >
-                  {isRepair ? "Est. Rate" : "Rate"}
+                  {isRepair ? (isRepairCompletion ? "Repair Rate" : "Est. Rate") : "Rate"}
                 </th>
                 <th
                   style={{
@@ -583,6 +585,8 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
             >
               {isCredit
                 ? "Total Credit:"
+                : isRepairCompletion
+                ? "Total Repair Charges:"
                 : isRepair
                 ? "Total Estimated Charges:"
                 : "Total Payable:"}{" "}

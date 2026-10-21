@@ -24,7 +24,13 @@ export async function GET(
       );
     }
 
-    const result = await InventoryService.getChallanByInvoiceNo(decodeURIComponent(invoiceNo));
+    const { searchParams } = new URL(req.url);
+    const stage = searchParams.get("stage") as "dispatch" | "completed" | null;
+
+    const result = await InventoryService.getChallanByInvoiceNo(
+      decodeURIComponent(invoiceNo),
+      stage || undefined
+    );
 
     return NextResponse.json({
       ...result,

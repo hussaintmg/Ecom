@@ -689,7 +689,8 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(data.message || "Bulk repair initiated successfully!");
+        const challanMsg = data.repairInvoiceNo ? ` (Challan: ${data.repairInvoiceNo})` : "";
+        toast.success((data.message || "Bulk repair initiated successfully!") + challanMsg);
         setBulkRepairModalOpen(false);
         setSelectedDefectiveIds([]);
         fetchDefectiveList(currentPage, false);

@@ -26,7 +26,9 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
     const filePrefix = billData.type === "Credit"
       ? "Credit_Receipt"
       : billData.type === "Repair"
-      ? (billData.repairSource === "customer" ? "Customer_Repair_Receipt" : "Repair_Challan")
+      ? (billData.repairStage === "completed" || billData.invoiceNo?.endsWith("-CMP")
+          ? (billData.repairSource === "customer" ? "Customer_Repair_Completion" : "Repair_Completion_Voucher")
+          : (billData.repairSource === "customer" ? "Customer_Repair_Receipt" : "Repair_Challan"))
       : "Invoice";
 
     const opt = {

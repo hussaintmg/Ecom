@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/sale-pricing.test.cjs",
-    "test:mongo": "node --test tests/sale-pricing.mongo.test.cjs"
+    "test:mongo": "node --test tests/sale-pricing.mongo.test.cjs tests/repair-batch.mongo.test.cjs"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.8",

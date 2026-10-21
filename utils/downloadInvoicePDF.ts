@@ -67,6 +67,7 @@ export const downloadInvoicePDF = async (invoice: any) => {
   const isCredit = invoiceType === "Credit";
   const isRepair = invoiceType === "Repair";
   const isCustomerRepair = isRepair && invoice.repairSource === "customer";
+  const isRepairCompletion = isRepair && (invoice.repairStage === "completed" || invoice.invoiceNo?.endsWith("-CMP") || invoice.customerNote?.includes("Completion"));
 
   const itemsWithUrl = pricedItems.map((item: any) => {
     let imageUrl = "";
@@ -152,14 +153,16 @@ export const downloadInvoicePDF = async (invoice: any) => {
 
   const documentTitle = isCredit
     ? "CREDIT SALE RECEIPT"
-    : isRepair
-      ? (isCustomerRepair ? "CUSTOMER REPAIR RECEIPT" : "REPAIR DISPATCH CHALLAN")
-      : "SALES INVOICE";
+    : isCustomerRepair
+      ? (isRepairCompletion ? "CUSTOMER REPAIR COMPLETION RECEIPT" : "CUSTOMER REPAIR RECEIPT")
+      : isRepair
+        ? (isRepairCompletion ? "REPAIR RETURN & COMPLETION VOUCHER" : "REPAIR DISPATCH CHALLAN")
+        : "SALES INVOICE";
 
   const watermarkText = isCredit 
     ? "CREDIT" 
     : isRepair 
-      ? (isCustomerRepair ? "CUSTOMER REPAIR" : "CHALLAN") 
+      ? (isRepairCompletion ? "REPAIRED" : isCustomerRepair ? "CUSTOMER REPAIR" : "CHALLAN") 
       : "INVOICE";
 
   // 5. Clean, centered HTML with proper sizing without 100vh stretching

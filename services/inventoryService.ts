@@ -70,6 +70,20 @@ export interface CompleteRepairInput {
   notes?: string;
 }
 
+export interface CompleteRepairBatchItem {
+  repairJobId: string;
+  successfulQty: number;
+  failedQty: number;
+  actualCost?: number;
+  notes?: string;
+}
+
+export interface CompleteRepairBatchInput {
+  repairInvoiceNo?: string;
+  items: CompleteRepairBatchItem[];
+  notes?: string;
+}
+
 export interface SellDefectiveInput {
   defectiveId: string;
   quantity: number;
@@ -539,6 +553,10 @@ export class InventoryService {
       await defective.save();
     }
 
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const repairInvoiceNo = (input as any).repairInvoiceNo || `REP-${dateStr}-${randomSuffix}`;
+
     const repairJob = await RepairJob.create({
       defectiveInventory: defective._id,
       product: defective.product,
@@ -546,6 +564,7 @@ export class InventoryService {
       quantityRepaired: 0,
       quantityFailed: 0,
       technicianOrVendor: input.technicianOrVendor?.trim() || "In-house",
+      repairInvoiceNo,
       estimatedCost: estCost,
       actualCost: 0,
       startDate: new Date(),
@@ -750,6 +769,278 @@ export class InventoryService {
       repairJob,
       defective,
       newSellableStock,
+    };
+  }
+
+  /**
+   * 5b. Complete an entire batch/challan of repairs in a single consolidated operation.
+   * - Atomically processes each item in the batch.
+   * - Restores successfully repaired stock to sellable (Product.stock).
+   * - CRITICAL INVARIANT: Product.price is NOT changed or overwritten. Original selling price remains intact.
+   * - Restores failed stock back to DefectiveInventory.availableDefectiveQuantity.
+   * - Decrements quantityRepairing and records actual repair costs.
+   * - Creates a single unified Completion Invoice (type: "Repair") for the entire batch.
+   * - Returns billData formatted for instant BillModal display, printing, and download.
+   */
+  static async completeRepairBatch(input: CompleteRepairBatchInput, userId?: string) {
+    await connectDB();
+    ensureModels();
+
+    if (!input.items || !Array.isArray(input.items) || input.items.length === 0) {
+      throw new Error("At least one repair item must be provided for batch completion.");
+    }
+
+    const completedJobs: any[] = [];
+    const invoiceProducts: any[] = [];
+    let totalBatchActualCost = 0;
+    let totalSuccessCount = 0;
+    let totalFailCount = 0;
+    let commonRepairInvoiceNo = input.repairInvoiceNo?.trim() || "";
+
+    for (const item of input.items) {
+      const sQty = Number(item.successfulQty || 0);
+      const fQty = Number(item.failedQty || 0);
+
+      if (!Number.isFinite(sQty) || !Number.isInteger(sQty) || sQty < 0) {
+        throw new Error("Successful quantity must be a non-negative whole number.");
+      }
+      if (!Number.isFinite(fQty) || !Number.isInteger(fQty) || fQty < 0) {
+        throw new Error("Failed quantity must be a non-negative whole number.");
+      }
+      if (sQty === 0 && fQty === 0) {
+        throw new Error("At least one outcome quantity (successful or failed) must be greater than zero for each item.");
+      }
+
+      const itemCost = Math.max(0, Number(item.actualCost || 0));
+
+      const repairJob = await RepairJob.findOneAndUpdate(
+        {
+          _id: item.repairJobId,
+          status: "In Progress",
+        },
+        {
+          $set: {
+            quantityRepaired: sQty,
+            quantityFailed: fQty,
+            actualCost: itemCost,
+            completionDate: new Date(),
+            status:
+              sQty > 0 && fQty === 0
+                ? "Successfully Repaired"
+                : sQty > 0
+                ? "Partially Repaired"
+                : "Failed",
+            notes: item.notes?.trim() || input.notes?.trim() || "",
+          },
+        },
+        { returnDocument: "after" }
+      ).populate("product", "name price images stock barcode category");
+
+      if (!repairJob) {
+        throw new Error(`Repair job ${item.repairJobId} not found or already completed/processed.`);
+      }
+
+      if (sQty + fQty !== repairJob.quantity) {
+        repairJob.status = "In Progress";
+        await repairJob.save();
+        throw new Error(
+          `Total outcome (${sQty} success + ${fQty} failed = ${sQty + fQty}) must equal repair job quantity (${repairJob.quantity}) for product "${(repairJob.product as any)?.name || "item"}".`
+        );
+      }
+
+      if (!commonRepairInvoiceNo && repairJob.repairInvoiceNo) {
+        commonRepairInvoiceNo = repairJob.repairInvoiceNo;
+      }
+
+      totalSuccessCount += sQty;
+      totalFailCount += fQty;
+      totalBatchActualCost += itemCost;
+
+      const productDoc: any = repairJob.product;
+
+      // Handling Customer Repair vs Store Defective
+      if (repairJob.repairSource === "customer" || !repairJob.defectiveInventory) {
+        await StockLog.create({
+          product: productDoc?._id || repairJob.product,
+          change: 0,
+          description: `Customer Repair Completed: ${sQty} repaired, ${fQty} failed for customer ${repairJob.customerName || "Customer"} (Cost: Rs. ${itemCost.toLocaleString()})`,
+          previousStock: productDoc?.stock || 0,
+          resultingStock: productDoc?.stock || 0,
+          quantity: repairJob.quantity,
+          movementType: sQty > 0 ? "repair_success" : "repair_failed",
+          fromState: "repairing",
+          toState: "customer",
+          repairJobId: repairJob._id,
+          performedBy: userId || null,
+          notes: item.notes?.trim() || input.notes?.trim() || "",
+        });
+      } else {
+        const defective = await DefectiveInventory.findById(repairJob.defectiveInventory);
+        if (defective) {
+          defective.quantityRepairing = Math.max(0, defective.quantityRepairing - repairJob.quantity);
+          if (fQty > 0) {
+            defective.availableDefectiveQuantity += fQty;
+          }
+          defective.repairCostSpent = (defective.repairCostSpent || 0) + itemCost;
+
+          if (defective.availableDefectiveQuantity === 0 && defective.quantityRepairing === 0) {
+            defective.status = "Closed";
+          } else if (defective.quantityRepairing > 0) {
+            defective.status = "In Repair";
+          } else if (fQty > 0) {
+            defective.status = "Repair Failed";
+          } else {
+            defective.status = "Repair Completed";
+          }
+          await defective.save();
+
+          // Restore successfully repaired stock to sellable Product.stock
+          if (sQty > 0) {
+            // CRITICAL INVARIANT: Product.price MUST NOT be changed! Only stock is incremented.
+            const prevProd = await Product.findOneAndUpdate(
+              { _id: defective.product },
+              { $inc: { stock: sQty } },
+              { returnDocument: "before" }
+            );
+            const prevStock = prevProd ? prevProd.stock : 0;
+            const newStock = prevStock + sQty;
+
+            await StockLog.create({
+              product: defective.product,
+              change: sQty,
+              description: `Repair Completed: +${sQty} units restored to Sellable stock (Repair Cost: Rs. ${itemCost.toLocaleString()})`,
+              previousStock: prevStock,
+              resultingStock: newStock,
+              quantity: sQty,
+              movementType: "repair_success",
+              fromState: "repairing",
+              toState: "sellable",
+              defectiveId: defective._id,
+              repairJobId: repairJob._id,
+              performedBy: userId || null,
+              notes: item.notes?.trim() || input.notes?.trim() || "",
+            });
+          }
+
+          if (fQty > 0) {
+            const currentProd = await Product.findById(defective.product);
+            await StockLog.create({
+              product: defective.product,
+              change: 0,
+              description: `Repair Failed: ${fQty} units returned to Defective stock`,
+              previousStock: currentProd?.stock || 0,
+              resultingStock: currentProd?.stock || 0,
+              quantity: fQty,
+              movementType: "repair_failed",
+              fromState: "repairing",
+              toState: "defective",
+              defectiveId: defective._id,
+              repairJobId: repairJob._id,
+              performedBy: userId || null,
+              notes: item.notes?.trim() || input.notes?.trim() || "",
+            });
+          }
+        }
+      }
+
+      let categoryId = productDoc?.category;
+      if (typeof categoryId === "object" && categoryId?._id) {
+        categoryId = categoryId._id;
+      }
+      if (!categoryId) {
+        const anyCat = await Category.findOne();
+        categoryId = anyCat?._id;
+      }
+
+      invoiceProducts.push({
+        product: productDoc?._id || repairJob.product,
+        category: categoryId,
+        quantity: sQty > 0 ? sQty : repairJob.quantity,
+        salePrice: itemCost, // Line actual repair cost
+        description: `Repaired: ${sQty} units, Failed: ${fQty} units (Defect: ${repairJob.notes || "Reported Fault"})${item.notes ? ` - ${item.notes}` : ""}`,
+      });
+
+      completedJobs.push({
+        ...repairJob.toObject(),
+        productName: productDoc?.name || "Product",
+        productImage: productDoc?.images?.[0]?.url || (typeof productDoc?.images?.[0] === "string" ? productDoc?.images?.[0] : ""),
+      });
+    }
+
+    if (!commonRepairInvoiceNo) {
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      commonRepairInvoiceNo = `REP-${dateStr}-${randomSuffix}`;
+    }
+
+    const firstJob: any = completedJobs[0] || {};
+    const billCustomerName = firstJob.repairSource === "customer"
+      ? (firstJob.customerName || "Valued Customer")
+      : (firstJob.technicianOrVendor || "Repair Vendor");
+
+    const billCustomerPhone = firstJob.repairSource === "customer"
+      ? (firstJob.customerPhone || "")
+      : (firstJob.vendorPhone || "");
+
+    const billCustomerAddress = firstJob.repairSource === "customer"
+      ? (firstJob.customerAddress || "")
+      : (firstJob.vendorAddress || "");
+
+    // Create single unified completion Invoice
+    const invoice = await Invoice.create({
+      customerName: billCustomerName,
+      customerPhone: billCustomerPhone,
+      customerAddress: billCustomerAddress,
+      type: "Repair",
+      products: invoiceProducts,
+      totalAmount: totalBatchActualCost,
+      stockAlreadyDeducted: true,
+      soldBy: userId || null,
+      customerNote: `Repair Return & Completion Voucher: ${commonRepairInvoiceNo}${input.notes ? `. Notes: ${input.notes}` : ""}`,
+    });
+
+    const completionInvoiceNo = `${commonRepairInvoiceNo}-CMP`;
+
+    const billData = {
+      invoiceNo: completionInvoiceNo,
+      challanNo: commonRepairInvoiceNo,
+      date: new Date().toLocaleDateString("en-PK", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+      customerName: billCustomerName,
+      customerPhone: billCustomerPhone,
+      customerAddress: billCustomerAddress,
+      type: "Repair",
+      repairStage: "completed",
+      repairSource: firstJob.repairSource,
+      technicianOrVendor: firstJob.technicianOrVendor || "",
+      totalAmount: totalBatchActualCost,
+      totalSuccessCount,
+      totalFailCount,
+      products: completedJobs.map((j) => ({
+        productName: j.productName,
+        quantity: j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
+        salePrice: j.actualCost || 0,
+        description: `Repaired: ${j.quantityRepaired} | Failed: ${j.quantityFailed}${j.notes ? ` | Note: ${j.notes}` : ""}`,
+        productImage: j.productImage,
+      })),
+      notes: input.notes || "Repaired and returned to stock",
+    };
+
+    return {
+      success: true,
+      repairInvoiceNo: commonRepairInvoiceNo,
+      completionInvoiceNo,
+      totalSuccessCount,
+      totalFailCount,
+      totalBatchActualCost,
+      completedJobsCount: completedJobs.length,
+      repairJobs: completedJobs,
+      invoice,
+      billData,
     };
   }
 
@@ -1822,7 +2113,15 @@ export class InventoryService {
       throw new Error("No defective items provided for bulk repair.");
     }
 
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const repairInvoiceNo = `REP-${dateStr}-${randomSuffix}`;
+
     const repairList: any[] = [];
+    const invoiceProducts: any[] = [];
+    let totalEstimatedCost = 0;
+    const vendorName = input.items[0]?.technicianOrVendor?.trim() || "Repair Vendor";
 
     for (const it of input.items) {
       const qty = Number(it.quantity);
@@ -1858,11 +2157,12 @@ export class InventoryService {
         defectiveInventory: defective._id,
         product: defective.product,
         quantity: qty,
-        technicianOrVendor: it.technicianOrVendor?.trim() || "",
+        technicianOrVendor: it.technicianOrVendor?.trim() || vendorName,
         estimatedCost: estCost,
-        startDate: new Date(),
+        startDate: now,
         status: "In Progress",
         notes: it.notes?.trim() || "",
+        repairInvoiceNo,
       });
 
       const product = await Product.findById(defective.product);
@@ -1872,7 +2172,7 @@ export class InventoryService {
         change: 0,
         description: `Bulk Sent to Repair: ${qty} units${
           it.technicianOrVendor ? ` with ${it.technicianOrVendor.trim()}` : ""
-        }`,
+        } (Challan: ${repairInvoiceNo})`,
         previousStock: product?.stock || 0,
         resultingStock: product?.stock || 0,
         quantity: qty,
@@ -1885,13 +2185,54 @@ export class InventoryService {
         notes: it.notes?.trim() || "",
       });
 
+      let categoryId = product?.category;
+      if (!categoryId) {
+        const anyCat = await Category.findOne();
+        categoryId = anyCat?._id;
+      }
+
+      invoiceProducts.push({
+        product: defective.product,
+        category: categoryId,
+        quantity: qty,
+        salePrice: estCost,
+        description: `Bulk Defective Repair: ${it.notes?.trim() || "Defective stock dispatch"}`,
+      });
+      totalEstimatedCost += estCost * qty;
+
       repairList.push({ defective, repairJob });
+    }
+
+    let invoice: any = null;
+    if (repairList.length > 0) {
+      try {
+        invoice = await Invoice.create({
+          customerName: vendorName,
+          customerPhone: "",
+          customerAddress: "",
+          products: invoiceProducts,
+          totalAmount: totalEstimatedCost,
+          discount: 0,
+          paidAmount: 0,
+          dueAmount: totalEstimatedCost,
+          paymentType: "Unpaid",
+          notes: `Defective Stock Repair Dispatch Challan (${repairList.length} item types)`,
+          invoiceNo: repairInvoiceNo,
+          isCustomInvoice: true,
+          type: "Repair",
+          stockAlreadyDeducted: true,
+        });
+      } catch (err) {
+        console.error("Failed to create dispatch invoice for bulk repair:", err);
+      }
     }
 
     return {
       success: true,
+      repairInvoiceNo,
       repairedCount: repairList.length,
       repairList,
+      invoice,
     };
   }
 
@@ -2131,8 +2472,9 @@ export class InventoryService {
 
   /**
    * Retrieves complete Challan information (all items/jobs and linked Invoice) by invoiceNo.
+   * Supports stage: "dispatch" | "completed"
    */
-  static async getChallanByInvoiceNo(invoiceNo: string) {
+  static async getChallanByInvoiceNo(invoiceNo: string, stage?: "dispatch" | "completed") {
     await connectDB();
     ensureModels();
 
@@ -2149,36 +2491,54 @@ export class InventoryService {
     }
 
     const firstJob: any = jobs[0] || {};
-    const dateStr = firstJob.startDate || firstJob.createdAt || invoice?.createdAt || new Date();
+    const isCompletedStage =
+      stage === "completed" ||
+      (jobs.length > 0 && jobs.every((j) => j.status !== "In Progress"));
+    const dateStr =
+      isCompletedStage && firstJob.completionDate
+        ? firstJob.completionDate
+        : firstJob.startDate || firstJob.createdAt || invoice?.createdAt || new Date();
+
+    const isCustomer = firstJob.repairSource === "customer";
+    const billCustomerName = isCustomer
+      ? (firstJob.customerName || invoice?.customerName || "Customer")
+      : (firstJob.technicianOrVendor || invoice?.customerName || "Repair Vendor");
+
+    const billCustomerPhone = isCustomer
+      ? (firstJob.customerPhone || invoice?.customerPhone || "")
+      : (firstJob.vendorPhone || invoice?.customerPhone || "");
+
+    const billCustomerAddress = isCustomer
+      ? (firstJob.customerAddress || invoice?.customerAddress || "")
+      : (firstJob.vendorAddress || invoice?.customerAddress || "");
+
+    const totalEst = jobs.reduce((acc, j) => acc + (j.estimatedCost || 0) * (j.quantity || 1), 0);
+    const totalAct = jobs.reduce((acc, j) => acc + (j.actualCost || 0), 0);
 
     const billData = {
-      invoiceNo,
+      invoiceNo: isCompletedStage ? `${invoiceNo}-CMP` : invoiceNo,
+      challanNo: invoiceNo,
       date: new Date(dateStr).toLocaleDateString("en-PK", {
         day: "numeric",
         month: "short",
         year: "numeric",
       }),
-      customerName: firstJob.repairSource === "customer"
-        ? (firstJob.customerName || invoice?.customerName || "Customer")
-        : (firstJob.technicianOrVendor || invoice?.customerName || "Repair Vendor"),
-      customerPhone: firstJob.repairSource === "customer"
-        ? (firstJob.customerPhone || invoice?.customerPhone || "")
-        : (firstJob.vendorPhone || invoice?.customerPhone || ""),
-      customerAddress: firstJob.repairSource === "customer"
-        ? (firstJob.customerAddress || invoice?.customerAddress || "")
-        : (firstJob.vendorAddress || invoice?.customerAddress || ""),
+      customerName: billCustomerName,
+      customerPhone: billCustomerPhone,
+      customerAddress: billCustomerAddress,
       type: "Repair",
+      repairStage: isCompletedStage ? "completed" : "dispatch",
       repairSource: firstJob.repairSource || (firstJob.defectiveInventory ? "defective" : "customer"),
       technicianOrVendor: firstJob.technicianOrVendor || "",
-      totalAmount: jobs.reduce((acc, j) => acc + (j.estimatedCost || 0) * (j.quantity || 1), 0),
+      totalAmount: isCompletedStage && totalAct > 0 ? totalAct : totalEst,
       products: jobs.map((j: any) => ({
         productName: j.product?.name || "Product",
-        quantity: j.quantity,
-        salePrice: j.estimatedCost || 0,
-        description: `Defect: ${j.defectiveInventory?.defectReason || "Reported Fault"}${
-          j.notes ? ` | Note: ${j.notes}` : ""
-        }`,
-        productImage: j.product?.images?.[0]?.url || "",
+        quantity: isCompletedStage && j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
+        salePrice: isCompletedStage && j.actualCost ? j.actualCost : (j.estimatedCost || 0),
+        description: isCompletedStage
+          ? `Repaired: ${j.quantityRepaired || 0} | Failed: ${j.quantityFailed || 0}${j.notes ? ` | Note: ${j.notes}` : ""}`
+          : `Defect: ${j.defectiveInventory?.defectReason || "Reported Fault"}${j.notes ? ` | Note: ${j.notes}` : ""}`,
+        productImage: j.product?.images?.[0]?.url || (typeof j.product?.images?.[0] === "string" ? j.product?.images?.[0] : ""),
       })),
       notes: firstJob.notes || invoice?.customerNote || "",
     };
@@ -2193,7 +2553,8 @@ export class InventoryService {
   }
 
   /**
-   * Fetches repair jobs with optional filters (vendor, status, source, search, pagination).
+   * Fetches repair jobs grouped by repair challan / invoiceNo.
+   * If multiple products went together in 1 challan, they return as 1 unified row/object with .items array.
    */
   static async getRepairJobs(params: {
     vendor?: string;
@@ -2239,15 +2600,168 @@ export class InventoryService {
       ];
     }
 
-    const totalJobs = await RepairJob.countDocuments(query);
+    // 1. Group pipeline for distinct challan keys, exact count, and ordering
+    const pipeline: any[] = [
+      { $match: query },
+      {
+        $addFields: {
+          effectiveChallanNo: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ["$repairInvoiceNo", null] },
+                  { $ne: ["$repairInvoiceNo", ""] },
+                ],
+              },
+              "$repairInvoiceNo",
+              { $concat: ["REP-LEGACY-", { $toString: "$_id" }] },
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$effectiveChallanNo",
+          latestCreatedAt: { $max: "$createdAt" },
+        },
+      },
+      { $sort: { latestCreatedAt: -1 } },
+      {
+        $facet: {
+          paginatedResults: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "count" }],
+        },
+      },
+    ];
+
+    const aggRes = await RepairJob.aggregate(pipeline);
+    const facet = aggRes[0] || {};
+    const challanKeys = (facet.paginatedResults || []).map((r: any) => r._id);
+    const totalJobs = facet.totalCount?.[0]?.count || 0;
     const totalPages = Math.ceil(totalJobs / limit) || 1;
 
-    const repairJobs = await RepairJob.find(query)
+    // 2. Fetch all repair jobs belonging to these paginated challans
+    const rawJobs = await RepairJob.find({
+      $or: [
+        { repairInvoiceNo: { $in: challanKeys } },
+        {
+          _id: {
+            $in: challanKeys
+              .filter((k: string) => k.startsWith("REP-LEGACY-"))
+              .map((k: string) => k.replace("REP-LEGACY-", "")),
+          },
+        },
+      ],
+    })
       .populate("product", "name price images stock barcode")
       .populate("defectiveInventory", "defectReason status")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+      .sort({ createdAt: -1 });
+
+    // 3. Group jobs into map matching paginated keys order
+    const groupedMap = new Map<string, any[]>();
+    for (const key of challanKeys) {
+      groupedMap.set(key, []);
+    }
+
+    for (const job of rawJobs) {
+      const key =
+        job.repairInvoiceNo && job.repairInvoiceNo.trim() !== ""
+          ? job.repairInvoiceNo
+          : `REP-LEGACY-${job._id.toString()}`;
+
+      if (groupedMap.has(key)) {
+        groupedMap.get(key)!.push(job);
+      }
+    }
+
+    // 4. Construct unified Challan Batch objects
+    const repairJobs: any[] = [];
+
+    for (const [key, jobs] of groupedMap.entries()) {
+      if (!jobs || jobs.length === 0) continue;
+
+      const firstJob = jobs[0];
+      const isCustomer = firstJob.repairSource === "customer";
+      const totalQty = jobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
+      const totalRepaired = jobs.reduce((sum, j) => sum + (Number(j.quantityRepaired) || 0), 0);
+      const totalFailed = jobs.reduce((sum, j) => sum + (Number(j.quantityFailed) || 0), 0);
+      const totalEstCost = jobs.reduce(
+        (sum, j) => sum + (Number(j.estimatedCost || 0) * (Number(j.quantity) || 1)),
+        0
+      );
+      const totalActCost = jobs.reduce((sum, j) => sum + (Number(j.actualCost) || 0), 0);
+
+      const allSuccess = jobs.every((j) => j.status === "Successfully Repaired");
+      const allFailed = jobs.every((j) => j.status === "Failed");
+      const anyInProgress = jobs.some((j) => j.status === "In Progress");
+      let batchStatus = "In Progress";
+      if (allSuccess) {
+        batchStatus = "Successfully Repaired";
+      } else if (allFailed) {
+        batchStatus = "Failed";
+      } else if (anyInProgress) {
+        batchStatus = "In Progress";
+      } else {
+        batchStatus = "Partially Repaired";
+      }
+
+      const repairInvoiceNo =
+        firstJob.repairInvoiceNo && firstJob.repairInvoiceNo.trim() !== ""
+          ? firstJob.repairInvoiceNo
+          : key;
+
+      repairJobs.push({
+        _id: firstJob._id.toString(),
+        repairInvoiceNo,
+        repairSource: firstJob.repairSource || (firstJob.defectiveInventory ? "defective" : "customer"),
+        technicianOrVendor: firstJob.technicianOrVendor || (isCustomer ? "Customer Service" : "Vendor"),
+        customerName: firstJob.customerName || "",
+        customerPhone: firstJob.customerPhone || "",
+        customerAddress: firstJob.customerAddress || "",
+        vendorPhone: firstJob.vendorPhone || "",
+        vendorAddress: firstJob.vendorAddress || "",
+        startDate: firstJob.startDate || firstJob.createdAt,
+        expectedReturnDate: firstJob.expectedReturnDate || null,
+        completionDate: jobs.reduce(
+          (latest, j) => (j.completionDate && (!latest || j.completionDate > latest) ? j.completionDate : latest),
+          null as Date | null
+        ),
+        status: batchStatus,
+        totalQuantity: totalQty,
+        quantity: totalQty,
+        totalRepaired,
+        quantityRepaired: totalRepaired,
+        totalFailed,
+        quantityFailed: totalFailed,
+        totalEstimatedCost: totalEstCost,
+        estimatedCost: totalEstCost,
+        totalActualCost: totalActCost,
+        actualCost: totalActCost,
+        notes: jobs.map((j) => j.notes).filter(Boolean).join(" | ") || firstJob.notes || "",
+        product: firstJob.product,
+        defectiveInventory: firstJob.defectiveInventory,
+        isGrouped: true,
+        jobsCount: jobs.length,
+        items: jobs.map((j) => ({
+          _id: j._id.toString(),
+          product: j.product,
+          productId: j.product?._id?.toString() || j.product?.toString(),
+          productName: j.product?.name || "Product",
+          productImage:
+            j.product?.images?.[0]?.url ||
+            (typeof j.product?.images?.[0] === "string" ? j.product?.images?.[0] : ""),
+          defectiveInventory: j.defectiveInventory,
+          quantity: j.quantity,
+          quantityRepaired: j.quantityRepaired || 0,
+          quantityFailed: j.quantityFailed || 0,
+          estimatedCost: j.estimatedCost || 0,
+          actualCost: j.actualCost || 0,
+          defectReason: j.defectiveInventory?.defectReason || j.notes || "Reported Fault",
+          notes: j.notes || "",
+          status: j.status,
+        })),
+      });
+    }
 
     // Collect list of distinct vendors
     const vendors = await RepairJob.distinct("technicianOrVendor", {
@@ -2260,6 +2774,134 @@ export class InventoryService {
       totalPages,
       currentPage: page,
       vendors,
+    };
+  }
+
+  /**
+   * Database Migration & Integrity Fix Helper.
+   * Safe public GET endpoint worker:
+   * 1. Assigns consistent repairInvoiceNo to legacy RepairJob documents lacking one.
+   * 2. Re-synchronizes DefectiveInventory repairing vs available quantities with active RepairJobs.
+   * 3. Creates missing Invoice (type: "Repair") records for existing repair challans.
+   * 4. Audits Product prices linked to repairs to ensure original selling price was never corrupted.
+   * 5. Returns non-sensitive audit metrics.
+   */
+  static async syncAndFixRepairData() {
+    await connectDB();
+    ensureModels();
+
+    let jobsAssignedChallan = 0;
+    let invoicesCreatedOrSynced = 0;
+    let defectiveBatchesSynced = 0;
+    let productsAudited = 0;
+
+    // 1. Audit RepairJobs lacking repairInvoiceNo
+    const orphanJobs = await RepairJob.find({
+      $or: [
+        { repairInvoiceNo: { $exists: false } },
+        { repairInvoiceNo: "" },
+        { repairInvoiceNo: null },
+      ],
+    }).sort({ createdAt: 1 });
+
+    for (const job of orphanJobs) {
+      const dateStr = (job.createdAt || new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+      const suffix = job._id.toString().slice(-4).toUpperCase();
+      job.repairInvoiceNo = `REP-${dateStr}-${suffix}`;
+      await job.save();
+      jobsAssignedChallan++;
+    }
+
+    // 2. Audit distinct repairInvoiceNos and ensure an Invoice exists
+    const distinctChallans = await RepairJob.distinct("repairInvoiceNo", {
+      repairInvoiceNo: { $ne: "" },
+    });
+
+    for (const challanNo of distinctChallans) {
+      const existingInv = await Invoice.findOne({
+        customerNote: { $regex: challanNo, $options: "i" },
+      });
+
+      if (!existingInv) {
+        const jobs = await RepairJob.find({ repairInvoiceNo: challanNo }).populate("product");
+        if (jobs.length > 0) {
+          const first = jobs[0];
+          const anyCat = await Category.findOne();
+          const invoiceProducts = jobs.map((j) => ({
+            product: j.product?._id || j.product,
+            category: (j.product as any)?.category || anyCat?._id,
+            quantity: j.quantity,
+            salePrice: j.estimatedCost || 0,
+            description: `Defect: ${j.notes || "Reported Fault"}`,
+          }));
+
+          const totalEst = jobs.reduce(
+            (sum, j) => sum + (j.estimatedCost || 0) * (j.quantity || 1),
+            0
+          );
+          const firstUser = await User.findOne({ role: { $in: ["admin", "owner"] } });
+
+          await Invoice.create({
+            customerName: first.customerName || first.technicianOrVendor || "Repair Vendor",
+            customerPhone: first.customerPhone || first.vendorPhone || "",
+            customerAddress: first.customerAddress || first.vendorAddress || "",
+            type: "Repair",
+            products: invoiceProducts,
+            totalAmount: totalEst,
+            stockAlreadyDeducted: true,
+            soldBy: firstUser?._id || null,
+            customerNote: `Repair Challan: ${challanNo}`,
+          });
+          invoicesCreatedOrSynced++;
+        }
+      }
+    }
+
+    // 3. Reconcile DefectiveInventory quantities with actual active RepairJobs
+    const defectives = await DefectiveInventory.find();
+    for (const def of defectives) {
+      const activeJobs = await RepairJob.find({
+        defectiveInventory: def._id,
+        status: "In Progress",
+      });
+      const expectedRepairing = activeJobs.reduce(
+        (sum, j) => sum + (Number(j.quantity) || 0),
+        0
+      );
+
+      if (def.quantityRepairing !== expectedRepairing) {
+        def.quantityRepairing = expectedRepairing;
+        if (def.availableDefectiveQuantity === 0 && def.quantityRepairing === 0) {
+          def.status = "Closed";
+        } else if (def.quantityRepairing > 0) {
+          def.status = "In Repair";
+        }
+        await def.save();
+        defectiveBatchesSynced++;
+      }
+    }
+
+    // 4. Verify Product price integrity for products involved in repairs
+    const repairProductIds = await RepairJob.distinct("product");
+    const products = await Product.find({ _id: { $in: repairProductIds } });
+    for (const prod of products) {
+      if (typeof prod.price !== "number" || isNaN(prod.price) || prod.price < 0) {
+        prod.price = 0;
+        await prod.save();
+      }
+      productsAudited++;
+    }
+
+    return {
+      success: true,
+      message: "Repair and defective inventory data integrity verified and synchronized successfully.",
+      stats: {
+        totalChallansAudited: distinctChallans.length,
+        jobsAssignedChallan,
+        invoicesCreatedOrSynced,
+        defectiveBatchesSynced,
+        productsAudited,
+      },
     };
   }
 }
