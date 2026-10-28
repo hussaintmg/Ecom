@@ -315,6 +315,17 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
         soldBy: adminUser._id,
       });
 
+      // Also create a defective inventory record with originalQuantity: 0 (legacy edge case)
+      const zeroQtyDef = await Defective.create({
+        product: prodA._id,
+        originalQuantity: 0,
+        availableDefectiveQuantity: 0,
+        quantityRepairing: 0,
+        defectReason: "Broken",
+        status: "Closed",
+      });
+      assert.equal(zeroQtyDef.originalQuantity, 0);
+
       // Public call with NO auth headers or cookies
       const req = new NextRequest("http://localhost/api/fix-old-data", {
         method: "GET",
@@ -333,6 +344,11 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
       // Verify dirtyInv2 description cleaned to empty (no clutter)
       const cleanedInv2 = await Invoice.findById(dirtyInv2._id);
       assert.equal(cleanedInv2.products[0].description, "");
+
+      // Verify zeroQtyDef was processed without any validation error
+      const processedDef = await Defective.findById(zeroQtyDef._id);
+      assert.ok(processedDef);
+      assert.equal(processedDef.originalQuantity, 0);
     });
   } catch (err) {
     console.error("Test error:", err);

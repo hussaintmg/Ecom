@@ -3007,42 +3007,46 @@ export class InventoryService {
     });
 
     for (const inv of invoices) {
-      let modified = false;
+      try {
+        let modified = false;
 
-      // Clean products array
-      if (Array.isArray(inv.products)) {
-        for (const item of inv.products) {
-          if (item && item.description && /Sold As-Is/i.test(item.description)) {
-            const cleaned = cleanSaleDescription(item.description);
-            if (cleaned !== item.description) {
-              item.description = cleaned;
-              modified = true;
-              saleItemsCleaned++;
+        // Clean products array
+        if (Array.isArray(inv.products)) {
+          for (const item of inv.products) {
+            if (item && item.description && /Sold As-Is/i.test(item.description)) {
+              const cleaned = cleanSaleDescription(item.description);
+              if (cleaned !== item.description) {
+                item.description = cleaned;
+                modified = true;
+                saleItemsCleaned++;
+              }
             }
           }
         }
-      }
 
-      // Clean legacy single product description
-      if (inv.description && /Sold As-Is/i.test(inv.description)) {
-        const cleaned = cleanSaleDescription(inv.description);
-        if (cleaned !== inv.description) {
-          inv.description = cleaned;
-          modified = true;
-          saleItemsCleaned++;
+        // Clean legacy single product description
+        if (inv.description && /Sold As-Is/i.test(inv.description)) {
+          const cleaned = cleanSaleDescription(inv.description);
+          if (cleaned !== inv.description) {
+            inv.description = cleaned;
+            modified = true;
+            saleItemsCleaned++;
+          }
         }
-      }
 
-      // Clean customerNote if it contains Sold As-Is clutter
-      if (inv.customerNote && /Sold As-Is \(Defective Inventory\):/i.test(inv.customerNote)) {
-        const match = inv.customerNote.match(/^Sold As-Is \(Defective Inventory\):\s*.*?\s*-\s*(.+)$/i);
-        inv.customerNote = match && match[1] ? match[1].trim() : "";
-        modified = true;
-      }
+        // Clean customerNote if it contains Sold As-Is clutter
+        if (inv.customerNote && /Sold As-Is \(Defective Inventory\):/i.test(inv.customerNote)) {
+          const match = inv.customerNote.match(/^Sold As-Is \(Defective Inventory\):\s*.*?\s*-\s*(.+)$/i);
+          inv.customerNote = match && match[1] ? match[1].trim() : "";
+          modified = true;
+        }
 
-      if (modified) {
-        await inv.save();
-        saleInvoicesCleaned++;
+        if (modified) {
+          await inv.save();
+          saleInvoicesCleaned++;
+        }
+      } catch (invErr) {
+        console.error("Warning cleaning invoice", inv?._id, invErr);
       }
     }
 
@@ -3056,11 +3060,15 @@ export class InventoryService {
     }).sort({ createdAt: 1 });
 
     for (const job of orphanJobs) {
-      const dateStr = (job.createdAt || new Date()).toISOString().slice(0, 10).replace(/-/g, "");
-      const suffix = job._id.toString().slice(-4).toUpperCase();
-      job.repairInvoiceNo = `REP-${dateStr}-${suffix}`;
-      await job.save();
-      legacyRepairJobsAssignedChallan++;
+      try {
+        const dateStr = (job.createdAt || new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+        const suffix = job._id.toString().slice(-4).toUpperCase();
+        job.repairInvoiceNo = `REP-${dateStr}-${suffix}`;
+        await job.save();
+        legacyRepairJobsAssignedChallan++;
+      } catch (jobErr) {
+        console.error("Warning assigning challan to job", job?._id, jobErr);
+      }
     }
 
     // 3. Initialize missing fields on RepairJob records
@@ -3073,13 +3081,17 @@ export class InventoryService {
     });
 
     for (const job of uninitializedJobs) {
-      if (job.problemDescription === undefined) job.problemDescription = "";
-      if (job.workDone === undefined) job.workDone = "";
-      if (job.completionNotes === undefined) {
-        job.completionNotes = job.status !== "In Progress" && job.notes ? job.notes : "";
+      try {
+        if (job.problemDescription === undefined) job.problemDescription = "";
+        if (job.workDone === undefined) job.workDone = "";
+        if (job.completionNotes === undefined) {
+          job.completionNotes = job.status !== "In Progress" && job.notes ? job.notes : "";
+        }
+        await job.save();
+        repairJobsFieldsInitialized++;
+      } catch (uErr) {
+        console.error("Warning initializing job fields", job?._id, uErr);
       }
-      await job.save();
-      repairJobsFieldsInitialized++;
     }
 
     // 4. Audit distinct repairInvoiceNos and ensure valid dispatch and completion invoices exist
@@ -3091,146 +3103,174 @@ export class InventoryService {
     const firstUser = await User.findOne({ role: { $in: ["admin", "owner"] } });
 
     for (const challanNo of distinctChallans) {
-      const jobs = await RepairJob.find({ repairInvoiceNo: challanNo }).populate("product");
-      if (jobs.length === 0) continue;
+      try {
+        const jobs = await RepairJob.find({ repairInvoiceNo: challanNo }).populate("product");
+        if (jobs.length === 0) continue;
 
-      const first = jobs[0];
-      const isCompleted = jobs.every((j) => j.status !== "In Progress");
+        const first = jobs[0];
+        const isCompleted = jobs.every((j) => j.status !== "In Progress");
 
-      // A) Ensure Dispatch Invoice exists
-      const existingDispatchInv = await Invoice.findOne({
-        $or: [
-          { invoiceNo: challanNo },
-          { customerNote: { $regex: `Repair Challan: ${challanNo}`, $options: "i" } },
-        ],
-      });
-
-      if (!existingDispatchInv) {
-        const invoiceProducts = jobs.map((j) => ({
-          product: j.product?._id || j.product,
-          category: (j.product as any)?.category || anyCat?._id,
-          quantity: j.quantity,
-          salePrice: j.estimatedCost || 0,
-          description: `Defect: ${j.notes || "Reported Fault"}`,
-        }));
-
-        const totalEst = jobs.reduce(
-          (sum, j) => sum + (j.estimatedCost || 0) * (j.quantity || 1),
-          0
-        );
-
-        await Invoice.create({
-          invoiceNo: challanNo,
-          customerName: first.customerName || first.technicianOrVendor || "Repair Vendor",
-          customerPhone: first.customerPhone || first.vendorPhone || "",
-          customerAddress: first.customerAddress || first.vendorAddress || "",
-          type: "Repair",
-          products: invoiceProducts,
-          totalAmount: totalEst,
-          stockAlreadyDeducted: true,
-          soldBy: firstUser?._id || null,
-          customerNote: `Repair Challan: ${challanNo}`,
-        });
-      }
-
-      // B) If jobs are completed, ensure Completion Voucher Invoice (${challanNo}-CMP) exists!
-      if (isCompleted) {
-        const completionNo = `${challanNo}-CMP`;
-        let compInv = await Invoice.findOne({
+        // A) Ensure Dispatch Invoice exists
+        const existingDispatchInv = await Invoice.findOne({
           $or: [
-            { invoiceNo: completionNo },
-            { customerNote: { $regex: completionNo, $options: "i" } },
-            { customerNote: { $regex: `Repair Return & Completion Voucher: ${challanNo}`, $options: "i" } },
+            { invoiceNo: challanNo },
+            { customerNote: { $regex: `Repair Challan: ${challanNo}`, $options: "i" } },
           ],
         });
 
-        const totalActCost = jobs.reduce((sum, j) => sum + (j.actualCost || 0), 0);
-        const batchNote = jobs.map((j) => j.completionNotes || j.notes).filter(Boolean).join(" | ");
+        if (!existingDispatchInv) {
+          const invoiceProducts = jobs.map((j) => ({
+            product: j.product?._id || j.product,
+            category: (j.product as any)?.category || anyCat?._id,
+            quantity: j.quantity,
+            salePrice: j.estimatedCost || 0,
+            description: `Defect: ${j.notes || "Reported Fault"}`,
+          }));
 
-        if (!compInv) {
-          const compProducts = jobs.map((j) => {
-            const parts = [];
-            if (j.quantityRepaired > 0 || j.quantityFailed > 0) parts.push(`Repaired: ${j.quantityRepaired || 0} | Failed: ${j.quantityFailed || 0}`);
-            if (j.problemDescription) parts.push(`Issue: ${j.problemDescription}`);
-            if (j.workDone) parts.push(`Work Done: ${j.workDone}`);
-            if (j.notes) parts.push(`Note: ${j.notes}`);
-            else if (j.completionNotes) parts.push(`Note: ${j.completionNotes}`);
-            return {
-              product: j.product?._id || j.product,
-              category: (j.product as any)?.category || anyCat?._id,
-              quantity: j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
-              salePrice: j.actualCost || 0,
-              description: parts.join(" | ") || "Repaired and returned to stock",
-            };
-          });
+          const totalEst = jobs.reduce(
+            (sum, j) => sum + (j.estimatedCost || 0) * (j.quantity || 1),
+            0
+          );
 
           await Invoice.create({
-            invoiceNo: completionNo,
+            invoiceNo: challanNo,
             customerName: first.customerName || first.technicianOrVendor || "Repair Vendor",
             customerPhone: first.customerPhone || first.vendorPhone || "",
             customerAddress: first.customerAddress || first.vendorAddress || "",
             type: "Repair",
-            products: compProducts,
-            totalAmount: totalActCost,
+            products: invoiceProducts,
+            totalAmount: totalEst,
             stockAlreadyDeducted: true,
             soldBy: firstUser?._id || null,
-            customerNote: `Repair Return & Completion Voucher: ${challanNo}${batchNote ? `. Notes: ${batchNote}` : ""}`,
+            customerNote: `Repair Challan: ${challanNo}`,
           });
-          completionVouchersCreatedOrUpdated++;
-        } else {
-          // Normalize existing completion invoice
-          let compModified = false;
-          if (compInv.invoiceNo !== completionNo) {
-            compInv.invoiceNo = completionNo;
-            compModified = true;
-          }
-          if (compInv.type !== "Repair") {
-            compInv.type = "Repair";
-            compModified = true;
-          }
-          if (!compInv.stockAlreadyDeducted) {
-            compInv.stockAlreadyDeducted = true;
-            compModified = true;
-          }
-          if (compModified) {
-            await compInv.save();
+        }
+
+        // B) If jobs are completed, ensure Completion Voucher Invoice (${challanNo}-CMP) exists!
+        if (isCompleted) {
+          const completionNo = `${challanNo}-CMP`;
+          let compInv = await Invoice.findOne({
+            $or: [
+              { invoiceNo: completionNo },
+              { customerNote: { $regex: completionNo, $options: "i" } },
+              { customerNote: { $regex: `Repair Return & Completion Voucher: ${challanNo}`, $options: "i" } },
+            ],
+          });
+
+          const totalActCost = jobs.reduce((sum, j) => sum + (j.actualCost || 0), 0);
+          const batchNote = jobs.map((j) => j.completionNotes || j.notes).filter(Boolean).join(" | ");
+
+          if (!compInv) {
+            const compProducts = jobs.map((j) => {
+              const parts = [];
+              if (j.quantityRepaired > 0 || j.quantityFailed > 0) parts.push(`Repaired: ${j.quantityRepaired || 0} | Failed: ${j.quantityFailed || 0}`);
+              if (j.problemDescription) parts.push(`Issue: ${j.problemDescription}`);
+              if (j.workDone) parts.push(`Work Done: ${j.workDone}`);
+              if (j.notes) parts.push(`Note: ${j.notes}`);
+              else if (j.completionNotes) parts.push(`Note: ${j.completionNotes}`);
+              return {
+                product: j.product?._id || j.product,
+                category: (j.product as any)?.category || anyCat?._id,
+                quantity: j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
+                salePrice: j.actualCost || 0,
+                description: parts.join(" | ") || "Repaired and returned to stock",
+              };
+            });
+
+            await Invoice.create({
+              invoiceNo: completionNo,
+              customerName: first.customerName || first.technicianOrVendor || "Repair Vendor",
+              customerPhone: first.customerPhone || first.vendorPhone || "",
+              customerAddress: first.customerAddress || first.vendorAddress || "",
+              type: "Repair",
+              products: compProducts,
+              totalAmount: totalActCost,
+              stockAlreadyDeducted: true,
+              soldBy: firstUser?._id || null,
+              customerNote: `Repair Return & Completion Voucher: ${challanNo}${batchNote ? `. Notes: ${batchNote}` : ""}`,
+            });
             completionVouchersCreatedOrUpdated++;
+          } else {
+            // Normalize existing completion invoice
+            let compModified = false;
+            if (compInv.invoiceNo !== completionNo) {
+              compInv.invoiceNo = completionNo;
+              compModified = true;
+            }
+            if (compInv.type !== "Repair") {
+              compInv.type = "Repair";
+              compModified = true;
+            }
+            if (!compInv.stockAlreadyDeducted) {
+              compInv.stockAlreadyDeducted = true;
+              compModified = true;
+            }
+            if (compModified) {
+              await compInv.save();
+              completionVouchersCreatedOrUpdated++;
+            }
           }
         }
+      } catch (chErr) {
+        console.error("Warning syncing challan", challanNo, chErr);
       }
     }
 
     // 5. Reconcile DefectiveInventory quantities with actual active RepairJobs
     const defectives = await DefectiveInventory.find();
     for (const def of defectives) {
-      const activeJobs = await RepairJob.find({
-        defectiveInventory: def._id,
-        status: "In Progress",
-      });
-      const expectedRepairing = activeJobs.reduce(
-        (sum, j) => sum + (Number(j.quantity) || 0),
-        0
-      );
+      try {
+        const activeJobs = await RepairJob.find({
+          defectiveInventory: def._id,
+          status: "In Progress",
+        });
+        const expectedRepairing = activeJobs.reduce(
+          (sum, j) => sum + (Number(j.quantity) || 0),
+          0
+        );
 
-      let defModified = false;
-      if (def.quantityRepairing !== expectedRepairing) {
-        def.quantityRepairing = expectedRepairing;
-        defModified = true;
-      }
+        let defModified = false;
+        const curOrigQty = typeof def.originalQuantity === "number" && !isNaN(def.originalQuantity) ? Math.max(0, def.originalQuantity) : 0;
+        let finalOrigQty = curOrigQty;
 
-      if (def.availableDefectiveQuantity === 0 && def.quantityRepairing === 0) {
-        if (def.status !== "Closed" && def.status !== "Sold" && def.status !== "Scrapped" && def.status !== "Repair Completed") {
-          def.status = "Closed";
+        if (def.originalQuantity !== curOrigQty) {
+          finalOrigQty = curOrigQty;
           defModified = true;
         }
-      } else if (def.quantityRepairing > 0 && def.status !== "In Repair" && def.status !== "Partially In Repair") {
-        def.status = def.availableDefectiveQuantity > 0 ? "Partially In Repair" : "In Repair";
-        defModified = true;
-      }
 
-      if (defModified) {
-        await def.save();
-        defectiveBatchesSynced++;
+        let newRepairing = Number(def.quantityRepairing) || 0;
+        if (newRepairing !== expectedRepairing) {
+          newRepairing = expectedRepairing;
+          defModified = true;
+        }
+
+        let newStatus = def.status;
+        const availableQty = Number(def.availableDefectiveQuantity) || 0;
+        if (availableQty === 0 && newRepairing === 0) {
+          if (def.status !== "Closed" && def.status !== "Sold" && def.status !== "Scrapped" && def.status !== "Repair Completed") {
+            newStatus = "Closed";
+            defModified = true;
+          }
+        } else if (newRepairing > 0 && def.status !== "In Repair" && def.status !== "Partially In Repair") {
+          newStatus = availableQty > 0 ? "Partially In Repair" : "In Repair";
+          defModified = true;
+        }
+
+        if (defModified) {
+          await DefectiveInventory.updateOne(
+            { _id: def._id },
+            {
+              $set: {
+                originalQuantity: finalOrigQty,
+                quantityRepairing: newRepairing,
+                status: newStatus,
+              },
+            }
+          );
+          defectiveBatchesSynced++;
+        }
+      } catch (defErr) {
+        console.error("Defective item sync warning for id", def._id, defErr);
       }
     }
 
@@ -3238,11 +3278,15 @@ export class InventoryService {
     const repairProductIds = await RepairJob.distinct("product");
     const products = await Product.find({ _id: { $in: repairProductIds } });
     for (const prod of products) {
-      if (typeof prod.price !== "number" || isNaN(prod.price) || prod.price < 0) {
-        prod.price = 0;
-        await prod.save();
+      try {
+        if (typeof prod.price !== "number" || isNaN(prod.price) || prod.price < 0) {
+          prod.price = 0;
+          await prod.save();
+        }
+        productsAudited++;
+      } catch (pErr) {
+        console.error("Warning auditing product", prod?._id, pErr);
       }
-      productsAudited++;
     }
 
     return {

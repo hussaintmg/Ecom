@@ -21,7 +21,8 @@ const DefectiveInventorySchema = new Schema(
     originalQuantity: {
       type: Number,
       required: true,
-      min: 1,
+      min: 0,
+      default: 0,
     },
     availableDefectiveQuantity: {
       type: Number,
