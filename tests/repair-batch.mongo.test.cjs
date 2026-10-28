@@ -19,6 +19,7 @@ const Defective = require("../models/DefectiveInventory.ts").default;
 const InventoryService = require("../services/inventoryService.ts").default;
 const batchCompletePOST = require("../app/api/inventory/repairs/complete-batch/route.ts").POST;
 const syncFixGET = require("../app/api/inventory/repairs/sync-fix/route.ts").GET;
+const fixOldDataGET = require("../app/api/fix-old-data/route.ts").GET;
 const challanGET = require("../app/api/inventory/repairs/challan/[invoiceNo]/route.ts").GET;
 const { signToken } = require("../utils/auth.ts");
 
@@ -278,6 +279,60 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
       const fixedJob = await RepairJob.findById(legacyJob._id);
       assert.ok(fixedJob.repairInvoiceNo);
       assert.match(fixedJob.repairInvoiceNo, /^REP-\d{8}-[0-9A-F]{4}$/i);
+    });
+
+    await t.test("Public GET /api/fix-old-data sanitizes legacy sale descriptions without requiring authentication", async () => {
+      // Create legacy invoices with dirty descriptions
+      const dirtyInv1 = await Invoice.create({
+        customerName: "Legacy Customer 1",
+        products: [
+          {
+            product: prodA._id,
+            category: category._id,
+            quantity: 1,
+            salePrice: 15000,
+            description: "Sold As-Is (Defective Inventory): Minor scratch - Customer 30-day warranty memo",
+          },
+        ],
+        totalAmount: 15000,
+        type: "Sell",
+        soldBy: adminUser._id,
+      });
+
+      const dirtyInv2 = await Invoice.create({
+        customerName: "Legacy Customer 2",
+        products: [
+          {
+            product: prodB._id,
+            category: category._id,
+            quantity: 1,
+            salePrice: 25000,
+            description: "Sold As-Is (Defective Inventory): Dead Battery (Archived Product)",
+          },
+        ],
+        totalAmount: 25000,
+        type: "Sell",
+        soldBy: adminUser._id,
+      });
+
+      // Public call with NO auth headers or cookies
+      const req = new NextRequest("http://localhost/api/fix-old-data", {
+        method: "GET",
+      });
+      const res = await fixOldDataGET(req);
+      const json = await res.json();
+
+      assert.ok(res.ok);
+      assert.equal(json.success, true);
+      assert.ok(json.stats.saleInvoicesCleaned >= 2);
+
+      // Verify dirtyInv1 description cleaned to user memo only
+      const cleanedInv1 = await Invoice.findById(dirtyInv1._id);
+      assert.equal(cleanedInv1.products[0].description, "Customer 30-day warranty memo");
+
+      // Verify dirtyInv2 description cleaned to empty (no clutter)
+      const cleanedInv2 = await Invoice.findById(dirtyInv2._id);
+      assert.equal(cleanedInv2.products[0].description, "");
     });
   } catch (err) {
     console.error("Test error:", err);
