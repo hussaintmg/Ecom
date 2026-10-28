@@ -111,6 +111,8 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   const [failQty, setFailQty] = useState("0");
   const [actualCost, setActualCost] = useState("0");
   const [completeNotes, setCompleteNotes] = useState("");
+  const [completeProblem, setCompleteProblem] = useState("");
+  const [completeWorkDone, setCompleteWorkDone] = useState("");
   const [submittingComplete, setSubmittingComplete] = useState(false);
 
   // 3. Sell As-Is Modal
@@ -383,6 +385,9 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   // Action: Open Complete Repair Modal
   const handleOpenCompleteRepair = async (item: any) => {
     setActiveDefective(item);
+    setCompleteProblem("");
+    setCompleteWorkDone("");
+    setCompleteNotes("");
     setCompleteModalOpen(true);
     // Fetch related active repair jobs
     try {
@@ -429,6 +434,9 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
           successfulQty: sQty,
           failedQty: fQty,
           actualCost: Number(actualCost) || 0,
+          problemDescription: completeProblem.trim(),
+          workDone: completeWorkDone.trim(),
+          completionNotes: completeNotes.trim(),
           notes: completeNotes.trim(),
         }),
       });
@@ -438,6 +446,10 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
           `Repair completed: ${sQty} units added to sellable stock, ${fQty} units returned to defective.`
         );
         setCompleteModalOpen(false);
+        if (data.billData) {
+          setBillData(data.billData);
+          setBillModalOpen(true);
+        }
         fetchDefectiveList(currentPage, false);
       } else {
         toast.error(data.error || "Failed to complete repair");
@@ -1780,6 +1792,28 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                 </label>
 
                 <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                  <span>Product Problem / Masla (Fault Identified)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. IC damaged, display short, capacitor leak"
+                    value={completeProblem}
+                    onChange={(e) => setCompleteProblem(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                  <span>Work Done / Kya kiya hai (Repair Action Taken)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Replaced capacitor, cleaned, fully tested OK"
+                    value={completeWorkDone}
+                    onChange={(e) => setCompleteWorkDone(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
                   <span>Completion Notes</span>
                   <input
                     type="text"
@@ -1889,10 +1923,10 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
               </div>
 
               <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
-                <span>Sale / Condition Memo (Optional)</span>
+                <span>Sale Description / Item Memo (Printed on Bill)</span>
                 <input
                   type="text"
-                  placeholder="e.g. Sold as-is with minor cosmetic blemishes"
+                  placeholder="e.g. Clearance sale, minor scratch on back, 1 month warranty..."
                   value={sellNotes}
                   onChange={(e) => setSellNotes(e.target.value)}
                   className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40"

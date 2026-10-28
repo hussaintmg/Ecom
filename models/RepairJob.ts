@@ -100,6 +100,21 @@ const RepairJobSchema = new Schema(
       type: String,
       default: "",
     },
+    problemDescription: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    workDone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    completionNotes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     status: {
       type: String,
       enum: [

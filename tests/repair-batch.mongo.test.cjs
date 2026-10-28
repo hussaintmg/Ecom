@@ -174,6 +174,8 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
               successfulQty: 3,
               failedQty: 1,
               actualCost: 2000,
+              problemDescription: "Short circuit on charging IC",
+              workDone: "Replaced charging IC and cleaned circuit",
               notes: "1 unit had dead motherboard",
             },
             {
@@ -181,10 +183,12 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
               successfulQty: 2,
               failedQty: 1,
               actualCost: 4000,
+              problemDescription: "Defective battery cells",
+              workDone: "Rebuilt battery cell pack",
               notes: "1 unit casing broken",
             },
           ],
-          notes: "Batch completion done in full",
+          notes: "All units tested and sealed after repair",
         }),
       });
 
@@ -195,6 +199,12 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
       assert.equal(json.totalSuccessCount, 5);
       assert.equal(json.totalFailCount, 2);
       assert.equal(json.totalBatchActualCost, 6000);
+
+      // Verify problemDescription, workDone, and completionNotes on RepairJobs
+      const updatedJobA = await RepairJob.findById(jobAId);
+      assert.equal(updatedJobA.problemDescription, "Short circuit on charging IC");
+      assert.equal(updatedJobA.workDone, "Replaced charging IC and cleaned circuit");
+      assert.equal(updatedJobA.completionNotes, "All units tested and sealed after repair");
 
       // 1. Verify Product A stock and price
       const updatedProdA = await Product.findById(prodA._id);
@@ -224,7 +234,7 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
       assert.equal(completionInvoices[completionInvoices.length - 1].products.length, 2, "Completion invoice must list both products");
     });
 
-    await t.test("Completion voucher API returns repairStage='completed' with actual cost", async () => {
+    await t.test("Completion voucher API returns repairStage='completed' with actual cost and completion notes", async () => {
       const req = new NextRequest(`http://localhost/api/inventory/repairs/challan/${repairChallanNo}?stage=completed`, {
         method: "GET",
         headers: { cookie: `auth_token=${token}` },
@@ -236,6 +246,8 @@ test("Repair batch flow: dispatch, grouped tracking, batch completion, price pro
       assert.equal(json.billData.repairStage, "completed");
       assert.equal(json.billData.totalAmount, 6000);
       assert.equal(json.billData.products.length, 2);
+      assert.equal(json.billData.notes, "All units tested and sealed after repair");
+      assert.ok(json.billData.products[0].description.includes("Work Done: Replaced charging IC and cleaned circuit"));
     });
 
     await t.test("Public sync-fix GET API audits and reconciles legacy repair documents without leaking PII", async () => {

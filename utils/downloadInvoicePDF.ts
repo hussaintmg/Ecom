@@ -108,7 +108,10 @@ export const downloadInvoicePDF = async (invoice: any) => {
         <div style="flex:1;margin-left:10px;">
           <div style="font-weight:600;color:#111827;font-size:12px;margin-bottom:2px;">${esc(item.productName)}</div>
           ${noteDesc && noteDesc.trim() !== "No description" && noteDesc.trim() !== "" 
-            ? `<div style="font-size:10px;color:#d97706;font-weight:500;">Defect/Issue: ${noteDesc}</div>` : ""}
+            ? (isRepair 
+                ? `<div style="font-size:10px;color:${isRepairCompletion ? "#059669" : "#d97706"};font-weight:500;">${isRepairCompletion ? "" : "Defect/Issue: "}${noteDesc}</div>`
+                : `<div style="font-size:10px;color:#6b7280;font-weight:400;">${noteDesc}</div>`)
+            : ""}
         </div>`;
 
       return `

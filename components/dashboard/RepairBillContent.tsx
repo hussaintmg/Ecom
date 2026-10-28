@@ -138,6 +138,8 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
       failedQty: string;
       actualCost: string;
       notes: string;
+      problemDescription: string;
+      workDone: string;
     }>
   >([]);
   const [batchCompleteNotes, setBatchCompleteNotes] = useState("");
@@ -783,7 +785,9 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
             ? it.estimatedCost * it.quantity
             : 0
         ),
-        notes: it.notes || "",
+        notes: "",
+        problemDescription: it.problemDescription || "",
+        workDone: it.workDone || "",
       };
     });
 
@@ -831,8 +835,11 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
             failedQty: parseInt(it.failedQty, 10),
             actualCost: parseFloat(it.actualCost) || 0,
             notes: it.notes.trim(),
+            problemDescription: it.problemDescription.trim(),
+            workDone: it.workDone.trim(),
           })),
           notes: batchCompleteNotes.trim(),
+          completionNotes: batchCompleteNotes.trim(),
         }),
       });
 
@@ -2623,6 +2630,48 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                           }}
                           className="w-full rounded-xl border bg-background px-2 py-1.5 text-right text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/40 text-emerald-600"
                         />
+                      </div>
+
+                      {/* Problem Diagnosed & Work Done inputs for this item */}
+                      <div className="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-border/30">
+                        <div>
+                          <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                            Product Problem / Masla (Fault Identified)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. IC damaged, display short, capacitor leak..."
+                            value={it.problemDescription}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setBatchItemsState((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], problemDescription: val };
+                                return next;
+                              });
+                            }}
+                            className="w-full rounded-xl border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                            Work Done / Kya kiya hai (Repair Action Taken)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Replaced IC, repaired trace, tested OK..."
+                            value={it.workDone}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setBatchItemsState((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], workDone: val };
+                                return next;
+                              });
+                            }}
+                            className="w-full rounded-xl border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}

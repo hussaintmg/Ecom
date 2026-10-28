@@ -26,6 +26,9 @@ export async function POST(
         failedQty: body.failedQty,
         actualCost: body.actualCost,
         notes: body.notes,
+        problemDescription: body.problemDescription,
+        workDone: body.workDone,
+        completionNotes: body.completionNotes,
       },
       user.id
     );

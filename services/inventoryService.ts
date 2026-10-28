@@ -68,6 +68,9 @@ export interface CompleteRepairInput {
   failedQty: number;
   actualCost?: number;
   notes?: string;
+  problemDescription?: string;
+  workDone?: string;
+  completionNotes?: string;
 }
 
 export interface CompleteRepairBatchItem {
@@ -76,12 +79,15 @@ export interface CompleteRepairBatchItem {
   failedQty: number;
   actualCost?: number;
   notes?: string;
+  problemDescription?: string;
+  workDone?: string;
 }
 
 export interface CompleteRepairBatchInput {
   repairInvoiceNo?: string;
   items: CompleteRepairBatchItem[];
   notes?: string;
+  completionNotes?: string;
 }
 
 export interface SellDefectiveInput {
@@ -645,7 +651,10 @@ export class InventoryService {
               : successQty > 0
               ? "Partially Repaired"
               : "Failed",
-          notes: input.notes?.trim() || "",
+          problemDescription: input.problemDescription?.trim() || "",
+          workDone: input.workDone?.trim() || "",
+          completionNotes: input.completionNotes?.trim() || input.notes?.trim() || "",
+          notes: input.notes?.trim() || input.completionNotes?.trim() || "",
         },
       },
       { returnDocument: "after" }
@@ -764,11 +773,89 @@ export class InventoryService {
       });
     }
 
+    const productDoc = await Product.findById(defective ? defective.product : repairJob.product);
+    let categoryId = productDoc?.category;
+    if (typeof categoryId === "object" && categoryId?._id) categoryId = categoryId._id;
+    if (!categoryId) {
+      const anyCat = await Category.findOne();
+      categoryId = anyCat?._id;
+    }
+
+    const problem = input.problemDescription?.trim() || "";
+    const work = input.workDone?.trim() || "";
+    const compNotes = input.completionNotes?.trim() || input.notes?.trim() || "";
+
+    const descParts = [];
+    if (successQty > 0 || failQty > 0) descParts.push(`Repaired: ${successQty} | Failed: ${failQty}`);
+    if (problem) descParts.push(`Issue: ${problem}`);
+    if (work) descParts.push(`Work Done: ${work}`);
+    if (compNotes) descParts.push(`Note: ${compNotes}`);
+    const lineDescription = descParts.join(" | ");
+
+    const completionInvoiceNo = `${repairJob.repairInvoiceNo || "REP-" + repairJob._id.toString().slice(-6).toUpperCase()}-CMP`;
+    let invoice: any = null;
+    try {
+      invoice = await Invoice.create({
+        invoiceNo: completionInvoiceNo,
+        customerName: repairJob.customerName || repairJob.technicianOrVendor || "Repair Vendor",
+        customerPhone: repairJob.customerPhone || repairJob.vendorPhone || "",
+        customerAddress: repairJob.customerAddress || repairJob.vendorAddress || "",
+        type: "Repair",
+        products: [
+          {
+            product: productDoc?._id || repairJob.product,
+            category: categoryId,
+            quantity: successQty > 0 ? successQty : repairJob.quantity,
+            salePrice: actualCost,
+            description: lineDescription,
+          },
+        ],
+        totalAmount: actualCost,
+        stockAlreadyDeducted: true,
+        soldBy: userId || null,
+        customerNote: `Repair Return & Completion Voucher: ${repairJob.repairInvoiceNo || completionInvoiceNo}${compNotes ? `. Notes: ${compNotes}` : ""}`,
+      });
+    } catch (err) {
+      console.error("Failed to create completion invoice in completeRepair:", err);
+    }
+
+    const billData = {
+      invoiceNo: completionInvoiceNo,
+      challanNo: repairJob.repairInvoiceNo,
+      date: new Date().toLocaleDateString("en-PK", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+      customerName: repairJob.customerName || repairJob.technicianOrVendor || "Repair Vendor",
+      customerPhone: repairJob.customerPhone || repairJob.vendorPhone || "",
+      customerAddress: repairJob.customerAddress || repairJob.vendorAddress || "",
+      type: "Repair",
+      repairStage: "completed",
+      repairSource: repairJob.repairSource,
+      technicianOrVendor: repairJob.technicianOrVendor || "",
+      totalAmount: actualCost,
+      totalSuccessCount: successQty,
+      totalFailCount: failQty,
+      products: [
+        {
+          productName: productDoc?.name || "Product",
+          quantity: successQty > 0 ? successQty : repairJob.quantity,
+          salePrice: actualCost,
+          description: lineDescription,
+          productImage: productDoc?.images?.[0]?.url || "",
+        },
+      ],
+      notes: compNotes || "Repaired and returned to stock",
+    };
+
     return {
       success: true,
       repairJob,
       defective,
       newSellableStock,
+      invoice,
+      billData,
     };
   }
 
@@ -830,7 +917,10 @@ export class InventoryService {
                 : sQty > 0
                 ? "Partially Repaired"
                 : "Failed",
-            notes: item.notes?.trim() || input.notes?.trim() || "",
+            problemDescription: item.problemDescription?.trim() || "",
+            workDone: item.workDone?.trim() || "",
+            completionNotes: input.completionNotes?.trim() || input.notes?.trim() || item.notes?.trim() || "",
+            notes: item.notes?.trim() || "",
           },
         },
         { returnDocument: "after" }
@@ -952,18 +1042,31 @@ export class InventoryService {
         categoryId = anyCat?._id;
       }
 
+      const itProblem = item.problemDescription?.trim() || "";
+      const itWork = item.workDone?.trim() || "";
+      const itNotes = item.notes?.trim() || "";
+      const itParts = [];
+      if (sQty > 0 || fQty > 0) itParts.push(`Repaired: ${sQty} | Failed: ${fQty}`);
+      if (itProblem) itParts.push(`Issue: ${itProblem}`);
+      if (itWork) itParts.push(`Work Done: ${itWork}`);
+      if (itNotes) itParts.push(`Note: ${itNotes}`);
+      const lineDescription = itParts.join(" | ");
+
       invoiceProducts.push({
         product: productDoc?._id || repairJob.product,
         category: categoryId,
         quantity: sQty > 0 ? sQty : repairJob.quantity,
         salePrice: itemCost, // Line actual repair cost
-        description: `Repaired: ${sQty} units, Failed: ${fQty} units (Defect: ${repairJob.notes || "Reported Fault"})${item.notes ? ` - ${item.notes}` : ""}`,
+        description: lineDescription,
       });
 
       completedJobs.push({
         ...repairJob.toObject(),
         productName: productDoc?.name || "Product",
         productImage: productDoc?.images?.[0]?.url || (typeof productDoc?.images?.[0] === "string" ? productDoc?.images?.[0] : ""),
+        problemDescription: itProblem,
+        workDone: itWork,
+        completionNotes: itNotes,
       });
     }
 
@@ -973,6 +1076,9 @@ export class InventoryService {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       commonRepairInvoiceNo = `REP-${dateStr}-${randomSuffix}`;
     }
+
+    const completionInvoiceNo = `${commonRepairInvoiceNo}-CMP`;
+    const batchNote = input.completionNotes?.trim() || input.notes?.trim() || "";
 
     const firstJob: any = completedJobs[0] || {};
     const billCustomerName = firstJob.repairSource === "customer"
@@ -989,6 +1095,7 @@ export class InventoryService {
 
     // Create single unified completion Invoice
     const invoice = await Invoice.create({
+      invoiceNo: completionInvoiceNo,
       customerName: billCustomerName,
       customerPhone: billCustomerPhone,
       customerAddress: billCustomerAddress,
@@ -997,10 +1104,8 @@ export class InventoryService {
       totalAmount: totalBatchActualCost,
       stockAlreadyDeducted: true,
       soldBy: userId || null,
-      customerNote: `Repair Return & Completion Voucher: ${commonRepairInvoiceNo}${input.notes ? `. Notes: ${input.notes}` : ""}`,
+      customerNote: `Repair Return & Completion Voucher: ${commonRepairInvoiceNo}${batchNote ? `. Notes: ${batchNote}` : ""}`,
     });
-
-    const completionInvoiceNo = `${commonRepairInvoiceNo}-CMP`;
 
     const billData = {
       invoiceNo: completionInvoiceNo,
@@ -1020,14 +1125,22 @@ export class InventoryService {
       totalAmount: totalBatchActualCost,
       totalSuccessCount,
       totalFailCount,
-      products: completedJobs.map((j) => ({
-        productName: j.productName,
-        quantity: j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
-        salePrice: j.actualCost || 0,
-        description: `Repaired: ${j.quantityRepaired} | Failed: ${j.quantityFailed}${j.notes ? ` | Note: ${j.notes}` : ""}`,
-        productImage: j.productImage,
-      })),
-      notes: input.notes || "Repaired and returned to stock",
+      products: completedJobs.map((j) => {
+        const parts = [];
+        if (j.quantityRepaired > 0 || j.quantityFailed > 0) parts.push(`Repaired: ${j.quantityRepaired} | Failed: ${j.quantityFailed}`);
+        if (j.problemDescription) parts.push(`Issue: ${j.problemDescription}`);
+        if (j.workDone) parts.push(`Work Done: ${j.workDone}`);
+        if (j.completionNotes) parts.push(`Note: ${j.completionNotes}`);
+        else if (j.notes) parts.push(`Note: ${j.notes}`);
+        return {
+          productName: j.productName,
+          quantity: j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
+          salePrice: j.actualCost || 0,
+          description: parts.join(" | "),
+          productImage: j.productImage,
+        };
+      }),
+      notes: batchNote || "Repaired and returned to stock",
     };
 
     return {
@@ -1118,9 +1231,7 @@ export class InventoryService {
           category: categoryId,
           quantity: qty,
           salePrice: price,
-          description: `Sold As-Is (Defective Inventory): ${defective.defectReason}${
-            input.notes ? ` - ${input.notes.trim()}` : ""
-          }${!product ? " (Archived Product)" : ""}`,
+          description: input.notes?.trim() || "",
         },
       ],
       totalAmount: price,
@@ -1980,9 +2091,7 @@ export class InventoryService {
         category: categoryId,
         quantity: qty,
         salePrice: price,
-        description: `Sold As-Is (Defective Inventory): ${defective.defectReason}${
-          it.notes ? ` - ${it.notes.trim()}` : ""
-        }${!product ? " (Archived Product)" : ""}`,
+        description: it.notes?.trim() || "",
       });
 
       grandTotal += price;
@@ -2478,22 +2587,53 @@ export class InventoryService {
     await connectDB();
     ensureModels();
 
-    const jobs = await RepairJob.find({ repairInvoiceNo: invoiceNo })
+    const rawInvNo = (invoiceNo || "").trim();
+    const cleanInvoiceNo = rawInvNo.replace(/-CMP$/i, "");
+    const completionNo = `${cleanInvoiceNo}-CMP`;
+
+    const jobs = await RepairJob.find({
+      $or: [
+        { repairInvoiceNo: cleanInvoiceNo },
+        { repairInvoiceNo: rawInvNo },
+      ],
+    })
       .populate("product", "name price images stock barcode")
       .populate("defectiveInventory", "defectReason status");
 
-    const invoice = await Invoice.findOne({
-      customerNote: { $regex: invoiceNo, $options: "i" },
-    }).populate("products.product", "name price images stock");
+    const isCompletedStage =
+      stage === "completed" ||
+      rawInvNo.endsWith("-CMP") ||
+      (jobs.length > 0 && jobs.every((j) => j.status !== "In Progress"));
+
+    let invoice: any = null;
+    if (isCompletedStage) {
+      invoice = await Invoice.findOne({
+        $or: [
+          { invoiceNo: completionNo },
+          { customerNote: { $regex: completionNo, $options: "i" } },
+          { customerNote: { $regex: `Completion Voucher: ${cleanInvoiceNo}`, $options: "i" } },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .populate("products.product", "name price images stock");
+    }
+
+    if (!invoice) {
+      invoice = await Invoice.findOne({
+        $or: [
+          { invoiceNo: cleanInvoiceNo },
+          { customerNote: { $regex: cleanInvoiceNo, $options: "i" } },
+        ],
+      })
+        .sort({ createdAt: isCompletedStage ? -1 : 1 })
+        .populate("products.product", "name price images stock");
+    }
 
     if (jobs.length === 0 && !invoice) {
       throw new Error(`Repair Challan ${invoiceNo} not found.`);
     }
 
     const firstJob: any = jobs[0] || {};
-    const isCompletedStage =
-      stage === "completed" ||
-      (jobs.length > 0 && jobs.every((j) => j.status !== "In Progress"));
     const dateStr =
       isCompletedStage && firstJob.completionDate
         ? firstJob.completionDate
@@ -2515,9 +2655,20 @@ export class InventoryService {
     const totalEst = jobs.reduce((acc, j) => acc + (j.estimatedCost || 0) * (j.quantity || 1), 0);
     const totalAct = jobs.reduce((acc, j) => acc + (j.actualCost || 0), 0);
 
+    let invoiceNote = "";
+    if (invoice?.customerNote) {
+      const match = invoice.customerNote.match(/Notes:\s*(.*)$/i);
+      invoiceNote = match ? match[1].trim() : invoice.customerNote;
+    }
+
+    const completionNotesFromJobs = Array.from(new Set(jobs.map((j) => j.completionNotes).filter(Boolean))).join(" | ");
+    const billNotes = isCompletedStage
+      ? (invoiceNote || completionNotesFromJobs || firstJob.completionNotes || firstJob.notes || "")
+      : (firstJob.notes || invoiceNote || "");
+
     const billData = {
-      invoiceNo: isCompletedStage ? `${invoiceNo}-CMP` : invoiceNo,
-      challanNo: invoiceNo,
+      invoiceNo: isCompletedStage ? completionNo : cleanInvoiceNo,
+      challanNo: cleanInvoiceNo,
       date: new Date(dateStr).toLocaleDateString("en-PK", {
         day: "numeric",
         month: "short",
@@ -2531,21 +2682,34 @@ export class InventoryService {
       repairSource: firstJob.repairSource || (firstJob.defectiveInventory ? "defective" : "customer"),
       technicianOrVendor: firstJob.technicianOrVendor || "",
       totalAmount: isCompletedStage && totalAct > 0 ? totalAct : totalEst,
-      products: jobs.map((j: any) => ({
-        productName: j.product?.name || "Product",
-        quantity: isCompletedStage && j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
-        salePrice: isCompletedStage && j.actualCost ? j.actualCost : (j.estimatedCost || 0),
-        description: isCompletedStage
-          ? `Repaired: ${j.quantityRepaired || 0} | Failed: ${j.quantityFailed || 0}${j.notes ? ` | Note: ${j.notes}` : ""}`
-          : `Defect: ${j.defectiveInventory?.defectReason || "Reported Fault"}${j.notes ? ` | Note: ${j.notes}` : ""}`,
-        productImage: j.product?.images?.[0]?.url || (typeof j.product?.images?.[0] === "string" ? j.product?.images?.[0] : ""),
-      })),
-      notes: firstJob.notes || invoice?.customerNote || "",
+      products: jobs.map((j: any) => {
+        let desc = "";
+        if (isCompletedStage) {
+          const parts = [];
+          if (j.quantityRepaired > 0 || j.quantityFailed > 0) parts.push(`Repaired: ${j.quantityRepaired || 0} | Failed: ${j.quantityFailed || 0}`);
+          if (j.problemDescription) parts.push(`Issue: ${j.problemDescription}`);
+          if (j.workDone) parts.push(`Work Done: ${j.workDone}`);
+          if (j.notes) parts.push(`Note: ${j.notes}`);
+          else if (j.completionNotes && j.completionNotes !== billNotes) parts.push(`Note: ${j.completionNotes}`);
+          desc = parts.join(" | ");
+        } else {
+          desc = `Defect: ${j.defectiveInventory?.defectReason || "Reported Fault"}${j.notes ? ` | Note: ${j.notes}` : ""}`;
+        }
+
+        return {
+          productName: j.product?.name || "Product",
+          quantity: isCompletedStage && j.quantityRepaired > 0 ? j.quantityRepaired : j.quantity,
+          salePrice: isCompletedStage && j.actualCost ? j.actualCost : (j.estimatedCost || 0),
+          description: desc,
+          productImage: j.product?.images?.[0]?.url || (typeof j.product?.images?.[0] === "string" ? j.product?.images?.[0] : ""),
+        };
+      }),
+      notes: billNotes,
     };
 
     return {
       success: true,
-      invoiceNo,
+      invoiceNo: cleanInvoiceNo,
       repairJobs: jobs,
       invoice,
       billData,
@@ -2737,7 +2901,7 @@ export class InventoryService {
         estimatedCost: totalEstCost,
         totalActualCost: totalActCost,
         actualCost: totalActCost,
-        notes: jobs.map((j) => j.notes).filter(Boolean).join(" | ") || firstJob.notes || "",
+        notes: jobs.map((j) => j.completionNotes || j.notes).filter(Boolean).join(" | ") || firstJob.completionNotes || firstJob.notes || "",
         product: firstJob.product,
         defectiveInventory: firstJob.defectiveInventory,
         isGrouped: true,
@@ -2757,7 +2921,10 @@ export class InventoryService {
           estimatedCost: j.estimatedCost || 0,
           actualCost: j.actualCost || 0,
           defectReason: j.defectiveInventory?.defectReason || j.notes || "Reported Fault",
-          notes: j.notes || "",
+          notes: j.completionNotes || j.notes || "",
+          problemDescription: j.problemDescription || "",
+          workDone: j.workDone || "",
+          completionNotes: j.completionNotes || "",
           status: j.status,
         })),
       });

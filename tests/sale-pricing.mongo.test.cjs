@@ -81,26 +81,29 @@ test("sale APIs persist correct totals in an isolated local MongoDB database", a
         assert.equal((await Product.findById(p.id)).stock, 20 - quantity);
       });
 
-      await t.test(`single defective sale ${quantity} units: normal stock unchanged`, async () => {
+      await t.test(`single defective sale ${quantity} units: normal stock unchanged and clean memo`, async () => {
         const p = await product(`Defective ${quantity}`);
         const d = await defective(p);
-        const { invoice } = await submit(defectivePOST, `/api/inventory/defective/${d.id}/sell`, { customerName: "Local defective test", quantity, salePrice: total }, "POST", d.id);
-        assertPrices(await Invoice.findById(invoice._id), quantity, total);
+        const { invoice } = await submit(defectivePOST, `/api/inventory/defective/${d.id}/sell`, { customerName: "Local defective test", quantity, salePrice: total, notes: "Special wholesale item note" }, "POST", d.id);
+        const saved = await Invoice.findById(invoice._id);
+        assertPrices(saved, quantity, total);
+        assert.equal(saved.products[0].description, "Special wholesale item note");
         assert.equal((await Product.findById(p.id)).stock, 20);
         assert.equal((await Defective.findById(d.id)).availableDefectiveQuantity, 10 - quantity);
       });
     }
 
-    await t.test("bulk defective sale: mixed quantities sum to 110,000", async () => {
+    await t.test("bulk defective sale: mixed quantities sum to 110,000 with clean descriptions", async () => {
       const p1 = await product("Bulk A"), p2 = await product("Bulk B");
       const d1 = await defective(p1), d2 = await defective(p2);
       const { invoice } = await submit(bulkDefectivePOST, "/api/inventory/defective/bulk-sell", { customerName: "Local bulk test", items: [
-        { defectiveId: d1.id, quantity: 2, salePrice: 44000 },
-        { defectiveId: d2.id, quantity: 3, salePrice: 66000 },
+        { defectiveId: d1.id, quantity: 2, salePrice: 44000, notes: "Bulk Item 1 clean note" },
+        { defectiveId: d2.id, quantity: 3, salePrice: 66000, notes: "Bulk Item 2 clean note" },
       ] });
       const saved = await Invoice.findById(invoice._id);
       assert.equal(saved.totalAmount, 110000);
       assert.deepEqual(saved.products.map(item => item.salePrice), [44000, 66000]);
+      assert.deepEqual(saved.products.map(item => item.description), ["Bulk Item 1 clean note", "Bulk Item 2 clean note"]);
       assert.deepEqual(getInvoicePricing(saved.toObject()).items.map(item => item.unitPrice), [22000, 22000]);
       assert.equal((await Product.findById(p1.id)).stock, 20);
       assert.equal((await Product.findById(p2.id)).stock, 20);

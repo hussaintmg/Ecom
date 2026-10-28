@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
         repairInvoiceNo: body.repairInvoiceNo,
         items: body.items,
         notes: body.notes,
+        completionNotes: body.completionNotes,
       },
       user.id
     );

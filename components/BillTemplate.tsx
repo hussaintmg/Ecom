@@ -540,7 +540,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
               }}
             >
               <strong style={{ color: "#111827" }}>
-                {isRepair ? "Challan / Repair Notes:" : "Notes:"}{" "}
+                {isRepair ? (isRepairCompletion ? "Repair Completion Notes:" : "Challan / Repair Notes:") : "Notes:"}{" "}
               </strong>
               <span>{esc(data.notes)}</span>
             </div>
@@ -612,7 +612,7 @@ const BillTemplate: React.FC<{ data: BillData }> = ({ data }) => {
                 : isCustomerRepair
                 ? "Please present this receipt when collecting your repaired item. Thank you!"
                 : isRepair
-                ? "Official Dispatch Challan for authorized repair workshop."
+                ? (isRepairCompletion ? "Official Repair Completion & Return Voucher." : "Official Dispatch Challan for authorized repair workshop.")
                 : "Thank you for your purchase!"}
             </div>
             <div style={{ fontWeight: "500", color: "#6b7280" }}>
