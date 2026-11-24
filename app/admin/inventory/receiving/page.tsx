@@ -1488,9 +1488,21 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
               <h4 className="font-black text-base text-foreground">Mark Product as Good</h4>
             </div>
 
+            {/* Target Product Badge */}
+            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Target Product</span>
+                <span className="font-black text-sm text-foreground">{selectedItemForGood.product?.name || "Product"}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-muted-foreground block">Pending</span>
+                <span className="font-black text-sm text-amber-600 dark:text-amber-400">{selectedItemForGood.qtyPending} units</span>
+              </div>
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Accepted quantity will immediately increase active sellable stock for{" "}
-              <strong className="text-foreground">{selectedItemForGood.product?.name}</strong>.
+              <strong className="text-foreground">{selectedItemForGood.product?.name}</strong>. Only this specific product will be updated.
             </p>
 
             <div className="p-3 rounded-xl bg-muted/40 text-xs flex justify-between">
@@ -1567,8 +1579,20 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
               <h4 className="font-black text-base text-foreground">Mark Product as Defective</h4>
             </div>
 
+            {/* Target Product Badge */}
+            <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider block">Target Product</span>
+                <span className="font-black text-sm text-foreground">{selectedItemForDefective.product?.name || "Product"}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-muted-foreground block">Pending</span>
+                <span className="font-black text-sm text-amber-600 dark:text-amber-400">{selectedItemForDefective.qtyPending} units</span>
+              </div>
+            </div>
+
             <p className="text-xs text-muted-foreground">
-              Items will enter <strong className="text-foreground">Defective Inventory</strong>. Normal sellable stock will NOT increase.
+              Items will enter <strong className="text-foreground">Defective Inventory</strong>. Normal sellable stock will NOT increase. Only this specific product will be marked.
             </p>
 
             <div className="p-3 rounded-xl bg-muted/40 text-xs flex justify-between">

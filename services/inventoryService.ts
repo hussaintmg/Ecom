@@ -346,20 +346,34 @@ export class InventoryService {
       throw new Error("Quantity must be a positive whole number.");
     }
 
-    // Atomic conditional decrement of pending quantity
+    const itemObjectId = new mongoose.Types.ObjectId(String(input.itemId));
+
+    // Atomic conditional decrement of pending quantity targeted strictly by item _id via arrayFilters
     const updatedReceipt = await InventoryReceipt.findOneAndUpdate(
       {
         _id: input.receiptId,
-        "items._id": input.itemId,
-        "items.qtyPending": { $gte: qty },
+        items: {
+          $elemMatch: {
+            _id: itemObjectId,
+            qtyPending: { $gte: qty },
+          },
+        },
       },
       {
         $inc: {
-          "items.$.qtyPending": -qty,
-          "items.$.qtyGood": qty,
+          "items.$[targetItem].qtyPending": -qty,
+          "items.$[targetItem].qtyGood": qty,
         },
       },
-      { returnDocument: "after" }
+      {
+        arrayFilters: [
+          {
+            "targetItem._id": itemObjectId,
+            "targetItem.qtyPending": { $gte: qty },
+          },
+        ],
+        returnDocument: "after",
+      }
     );
 
     if (!updatedReceipt) {
@@ -431,20 +445,34 @@ export class InventoryService {
       throw new Error("Defect reason is required.");
     }
 
-    // Atomic conditional decrement of pending quantity
+    const itemObjectId = new mongoose.Types.ObjectId(String(input.itemId));
+
+    // Atomic conditional decrement of pending quantity targeted strictly by item _id via arrayFilters
     const updatedReceipt = await InventoryReceipt.findOneAndUpdate(
       {
         _id: input.receiptId,
-        "items._id": input.itemId,
-        "items.qtyPending": { $gte: qty },
+        items: {
+          $elemMatch: {
+            _id: itemObjectId,
+            qtyPending: { $gte: qty },
+          },
+        },
       },
       {
         $inc: {
-          "items.$.qtyPending": -qty,
-          "items.$.qtyDefective": qty,
+          "items.$[targetItem].qtyPending": -qty,
+          "items.$[targetItem].qtyDefective": qty,
         },
       },
-      { returnDocument: "after" }
+      {
+        arrayFilters: [
+          {
+            "targetItem._id": itemObjectId,
+            "targetItem.qtyPending": { $gte: qty },
+          },
+        ],
+        returnDocument: "after",
+      }
     );
 
     if (!updatedReceipt) {
