@@ -10,6 +10,7 @@ import CustomerDetailsForm, {
   CustomerFormValue,
   emptyCustomer,
 } from "@/components/dashboard/CustomerDetailsForm";
+import toast from "@/utils/toast";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -150,12 +151,12 @@ const CreditSaleInner = () => {
     const price = Number(salePrice);
 
     if (qty <= 0) {
-      alert("Quantity must be greater than zero");
+      toast.error("Quantity must be greater than zero");
       return;
     }
 
     if (price <= 0) {
-      alert("Credit price must be greater than zero");
+      toast.error("Credit price must be greater than zero");
       return;
     }
 
@@ -166,8 +167,8 @@ const CreditSaleInner = () => {
     const totalNeeded = existingQtyInList + qty;
 
     if (totalNeeded > selectedProduct.stock) {
-      alert(
-        `Insufficient stock.\n\nAvailable Stock: ${selectedProduct.stock}\nAlready Appended: ${existingQtyInList}\nAttempted to Add: ${qty}`
+      toast.error(
+        `Insufficient stock. Available Stock: ${selectedProduct.stock}, Already in list: ${existingQtyInList}, Attempted to add: ${qty}`
       );
       return;
     }
@@ -228,7 +229,7 @@ const CreditSaleInner = () => {
   const handleSaveCreditSale = async () => {
     if (appendedProducts.length === 0) return;
     if (!customer.customerName.trim()) {
-      alert("Customer name is required");
+      toast.error("Customer name is required");
       return;
     }
 

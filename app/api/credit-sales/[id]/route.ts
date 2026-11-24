@@ -73,6 +73,68 @@ const createPaidInvoice = async (creditSale: any, userId: string) => {
   return invoice._id;
 };
 
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    const user = getUserFromRequest(req);
+
+    if (!user || (user.role !== "admin" && user.role !== "owner")) {
+      return NextResponse.json(
+        { success: false, error: "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
+    const body = await req.json();
+    const creditSale = await CreditSale.findById(id);
+
+    if (!creditSale) {
+      return NextResponse.json(
+        { success: false, error: "Credit sale not found" },
+        { status: 404 }
+      );
+    }
+
+    if (body.customerName !== undefined) creditSale.customerName = body.customerName.trim();
+    if (body.customerPhone !== undefined) creditSale.customerPhone = body.customerPhone.trim();
+    if (body.customerEmail !== undefined) creditSale.customerEmail = body.customerEmail.trim();
+    if (body.customerAddress !== undefined) creditSale.customerAddress = body.customerAddress.trim();
+    if (body.customerCity !== undefined) creditSale.customerCity = body.customerCity.trim();
+    if (body.customerNote !== undefined) creditSale.customerNote = body.customerNote.trim();
+    if (body.description !== undefined) creditSale.description = body.description.trim();
+
+    await creditSale.save();
+
+    // If an associated invoice exists, keep customer details synchronized
+    if (creditSale.generatedInvoice) {
+      await Invoice.findByIdAndUpdate(creditSale.generatedInvoice, {
+        customerName: creditSale.customerName,
+        customerPhone: creditSale.customerPhone,
+        customerEmail: creditSale.customerEmail,
+        customerAddress: creditSale.customerAddress,
+        customerCity: creditSale.customerCity,
+        customerNote: creditSale.customerNote,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Credit sale updated successfully",
+      creditSale: await populateCreditSale(id),
+    });
+  } catch (error: any) {
+    console.error("PUT credit sale error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update credit sale" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

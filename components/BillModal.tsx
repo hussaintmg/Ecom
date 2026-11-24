@@ -5,6 +5,7 @@ import html2pdf from "html2pdf.js";
 import Button from "./ui/Button";
 import BillTemplate, { BillData } from "./BillTemplate";
 import { X, Download, Printer, Loader2 } from "lucide-react";
+import toast from "@/utils/toast";
 
 interface BillModalProps {
   isOpen: boolean;
@@ -68,7 +69,7 @@ const BillModal: React.FC<BillModalProps> = ({ isOpen, onClose, billData }) => {
       await html2pdf().set(opt).from(element).save();
     } catch (error) {
       console.error("PDF generation error:", error);
-      alert("Failed to generate PDF. Please try again.");
+      toast.error("Failed to generate PDF. Please try again.");
     } finally {
       setDownloading(false);
     }

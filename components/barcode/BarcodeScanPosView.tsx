@@ -24,6 +24,7 @@ import {
 import BarcodeScannerView from "@/components/barcode/BarcodeScannerView";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
+import toast from "@/utils/toast";
 
 interface CartItem {
   product: any;
@@ -214,12 +215,12 @@ const BarcodeScanPosView: React.FC<BarcodeScanPosViewProps> = ({ role }) => {
     e.preventDefault();
 
     if (cartItems.length === 0) {
-      alert("Please scan or add at least one product.");
+      toast.error("Please scan or add at least one product.");
       return;
     }
 
     if (!customerName.trim()) {
-      alert("Please enter customer name.");
+      toast.error("Please enter customer name.");
       return;
     }
 
@@ -273,7 +274,7 @@ const BarcodeScanPosView: React.FC<BarcodeScanPosViewProps> = ({ role }) => {
       setCustomerCity("");
       setCustomerNote("");
     } catch (err: any) {
-      alert(err.message || "Checkout transaction failed.");
+      toast.error(err.message || "Checkout transaction failed.");
     } finally {
       setSubmitting(false);
     }

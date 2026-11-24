@@ -796,6 +796,42 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
     setCompleteModalOpen(true);
   };
 
+  // Open complete repair modal for an individual item inside a batch/challan
+  const handleOpenCompleteModalForItem = (batch: any, it: any) => {
+    setActiveBatchToComplete(batch);
+    const remainingQty = Math.max(
+      1,
+      it.quantity - (it.quantityRepaired || 0) - (it.quantityFailed || 0)
+    );
+    setBatchItemsState([
+      {
+        repairJobId: it._id,
+        productId: it.productId || it.product?._id || it.product,
+        productName: it.productName || it.product?.name || "Product",
+        productImage:
+          it.productImage ||
+          it.product?.images?.[0]?.url ||
+          (typeof it.product?.images?.[0] === "string" ? it.product?.images?.[0] : ""),
+        defectReason: it.defectReason || "Reported Fault",
+        quantity: it.quantity,
+        successfulQty: String(remainingQty),
+        failedQty: "0",
+        actualCost: String(
+          it.actualCost > 0
+            ? it.actualCost
+            : it.estimatedCost
+            ? it.estimatedCost * it.quantity
+            : 0
+        ),
+        notes: "",
+        problemDescription: it.problemDescription || "",
+        workDone: it.workDone || "",
+      },
+    ]);
+    setBatchCompleteNotes("");
+    setCompleteModalOpen(true);
+  };
+
   // Submit complete repair batch
   const handleSubmitComplete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1042,6 +1078,11 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                 setSelectedDefectiveId("");
                 setSelectedDefectiveRecord(null);
                 setDefectiveDropdownOpen(false);
+                setStagedItems([]);
+                setSelectedQty("1");
+                setSelectedEstCost("0");
+                setSelectedDefectReason("");
+                setSelectedItemNote("");
               }}
               className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                 repairSource === "customer"
@@ -1082,6 +1123,11 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                 setSelectedProductId("");
                 setSelectedCustomerProduct(null);
                 setCatalogDropdownOpen(false);
+                setStagedItems([]);
+                setSelectedQty("1");
+                setSelectedEstCost("0");
+                setSelectedDefectReason("");
+                setSelectedItemNote("");
               }}
               className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                 repairSource === "defective"
@@ -2407,37 +2453,56 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                                         <th className="pb-1.5 text-center">Repaired / Failed</th>
                                         <th className="pb-1.5 text-right">Cost (PKR)</th>
                                         <th className="pb-1.5 text-center">Status</th>
+                                        <th className="pb-1.5 text-right">Action</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border/40">
-                                      {job.items.map((it: any) => (
-                                        <tr key={it._id} className="text-[11px]">
-                                          <td className="py-1.5 font-semibold text-foreground">
-                                            {it.productName || it.product?.name || "Product"}
-                                          </td>
-                                          <td className="py-1.5 text-muted-foreground">
-                                            {it.defectReason || "Reported Fault"}
-                                          </td>
-                                          <td className="py-1.5 text-center font-mono font-bold">
-                                            {it.quantity}
-                                          </td>
-                                          <td className="py-1.5 text-center font-mono">
-                                            <span className="text-emerald-600 font-bold">
-                                              +{it.quantityRepaired || 0}
-                                            </span>{" "}
-                                            /{" "}
-                                            <span className="text-red-500 font-bold">
-                                              -{it.quantityFailed || 0}
-                                            </span>
-                                          </td>
-                                          <td className="py-1.5 text-right font-mono text-emerald-600 font-bold">
-                                            Rs. {(it.actualCost || it.estimatedCost || 0).toLocaleString()}
-                                          </td>
-                                          <td className="py-1.5 text-center">
-                                            {getStatusBadge(it.status || job.status)}
-                                          </td>
-                                        </tr>
-                                      ))}
+                                      {job.items.map((it: any) => {
+                                        const isItemPending =
+                                          (it.status || job.status) === "In Progress" &&
+                                          (it.quantityRepaired || 0) + (it.quantityFailed || 0) < it.quantity;
+                                        return (
+                                          <tr key={it._id} className="text-[11px]">
+                                            <td className="py-1.5 font-semibold text-foreground">
+                                              {it.productName || it.product?.name || "Product"}
+                                            </td>
+                                            <td className="py-1.5 text-muted-foreground">
+                                              {it.defectReason || "Reported Fault"}
+                                            </td>
+                                            <td className="py-1.5 text-center font-mono font-bold">
+                                              {it.quantity}
+                                            </td>
+                                            <td className="py-1.5 text-center font-mono">
+                                              <span className="text-emerald-600 font-bold">
+                                                +{it.quantityRepaired || 0}
+                                              </span>{" "}
+                                              /{" "}
+                                              <span className="text-red-500 font-bold">
+                                                -{it.quantityFailed || 0}
+                                              </span>
+                                            </td>
+                                            <td className="py-1.5 text-right font-mono text-emerald-600 font-bold">
+                                              Rs. {(it.actualCost || it.estimatedCost || 0).toLocaleString()}
+                                            </td>
+                                            <td className="py-1.5 text-center">
+                                              {getStatusBadge(it.status || job.status)}
+                                            </td>
+                                            <td className="py-1.5 text-right">
+                                              {isItemPending && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="primary"
+                                                  onClick={() => handleOpenCompleteModalForItem(job, it)}
+                                                  className="h-6 text-[10px] gap-1 px-2 font-bold cursor-pointer text-white"
+                                                  title={`Complete repair for ${it.productName || "this product"}`}
+                                                >
+                                                  <CheckCircle2 size={10} /> Receive Item
+                                                </Button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>

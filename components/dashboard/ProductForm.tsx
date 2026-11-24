@@ -9,6 +9,7 @@ import {
   isSuspiciousStockChange,
 } from "@/constants/stock";
 import { RefreshCw, Upload, ImagePlus, X, ArrowRight } from "lucide-react";
+import toast from "@/utils/toast";
 
 interface ProductFormProps {
   initialData?: any;
@@ -145,7 +146,7 @@ const ProductForm = ({ initialData, onComplete }: ProductFormProps) => {
     e.preventDefault();
 
     if (stockError) {
-      alert(stockError);
+      toast.error(stockError);
       return;
     }
 

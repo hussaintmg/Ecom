@@ -8,6 +8,8 @@ import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
 import { CustomerCell, CustomerDetailsModal } from "@/components/dashboard/InvoiceCustomer";
 import CreditSaleFilterBar, { CreditSaleFilterState } from "@/components/dashboard/CreditSaleFilterBar";
+import { EditCreditSaleModal } from "@/components/dashboard/EditCreditSaleModal";
+import toast from "@/utils/toast";
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,6 +19,7 @@ import {
   RefreshCw,
   Trash2,
   Wallet,
+  Edit2,
 } from "lucide-react";
 import { downloadInvoicePDF } from "@/utils/downloadInvoicePDF";
 
@@ -55,6 +58,7 @@ const CreditSalesInner = () => {
     fetchCreditSales,
     addCreditPayment,
     revertCreditSale,
+    updateCreditSale,
     deleteCreditSale,
     setCurrentPage,
   } = useCreditSales();
@@ -64,6 +68,7 @@ const CreditSalesInner = () => {
   const [filters, setFilters] = useState<CreditSaleFilterState>(initialFilters);
   // Credit sale whose full customer record is open in the details sheet
   const [detailCredit, setDetailCredit] = useState<any>(null);
+  const [editCredit, setEditCredit] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -198,7 +203,7 @@ const CreditSalesInner = () => {
 
     const amount = Number(rawAmount);
     if (!amount || amount <= 0) {
-      alert("Please enter a valid amount greater than zero.");
+      toast.error("Please enter a valid amount greater than zero.");
       return;
     }
 
@@ -405,6 +410,13 @@ const CreditSalesInner = () => {
                       <td className="px-4 py-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
+                            onClick={() => setEditCredit(credit)}
+                            className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                            title="Edit Credit Sale Details"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
                             onClick={() => handleAddPayment(credit)}
                             disabled={actioningId === credit._id || credit.status !== "Open"}
                             className="p-1.5 rounded-lg border hover:bg-emerald-500/10 transition-colors text-emerald-600 disabled:opacity-40"
@@ -562,6 +574,13 @@ const CreditSalesInner = () => {
                         By {credit.createdBy?.name || "Unknown"}
                       </div>
                       <button
+                        onClick={() => setEditCredit(credit)}
+                        className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                        title="Edit Credit Sale Details"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
                         onClick={() => handleAddPayment(credit)}
                         disabled={actioningId === credit._id || credit.status !== "Open"}
                         className="p-1.5 rounded-lg border hover:bg-emerald-500/10 transition-colors text-emerald-600 disabled:opacity-40"
@@ -663,6 +682,14 @@ const CreditSalesInner = () => {
         onClose={() => setDetailCredit(null)}
         invoice={detailCredit}
         currency="PKR"
+      />
+
+      {/* ── Edit credit sale modal ── */}
+      <EditCreditSaleModal
+        isOpen={!!editCredit}
+        onClose={() => setEditCredit(null)}
+        creditSale={editCredit}
+        onSave={updateCreditSale}
       />
     </div>
   );

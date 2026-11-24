@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import BarcodePrintModal from "@/components/barcode/BarcodePrintModal";
 import SingleBarcodeModal from "@/components/barcode/SingleBarcodeModal";
 import TooltipCell from "@/components/ui/TooltipCell";
+import toast from "@/utils/toast";
 import {
   Plus,
   Trash2,
@@ -124,11 +125,11 @@ const ProductsInner = () => {
         if (res.ok && data.success) {
           setSelectedProducts(data.products || []);
         } else {
-          alert(data.message || "Failed to select all products");
+          toast.error(data.message || "Failed to select all products");
         }
       } catch (err: any) {
         console.error(err);
-        alert("Network error fetching all products for selection");
+        toast.error("Network error fetching all products for selection");
       } finally {
         setLoadingAllPages(false);
       }
@@ -171,7 +172,7 @@ const ProductsInner = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: any) {
-      alert(err.message || "Error downloading barcodes ZIP");
+      toast.error(err.message || "Error downloading barcodes ZIP");
     } finally {
       setDownloadingZip(false);
     }

@@ -90,6 +90,18 @@ interface CreditSaleContextType {
   ) => Promise<CreditSaleItem | null>;
   addCreditPayment: (id: string, amount: number) => Promise<CreditSaleItem | null>;
   revertCreditSale: (id: string) => Promise<CreditSaleItem | null>;
+  updateCreditSale: (
+    id: string,
+    data: {
+      customerName?: string;
+      customerPhone?: string;
+      customerEmail?: string;
+      customerAddress?: string;
+      customerCity?: string;
+      customerNote?: string;
+      description?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteCreditSale: (id: string) => Promise<boolean>;
   setCurrentPage: (page: number) => void;
   setSearchQuery: (query: string) => void;
@@ -226,6 +238,41 @@ export const CreditSaleProvider = ({
     }
   };
 
+  const updateCreditSale = async (
+    id: string,
+    data: {
+      customerName?: string;
+      customerPhone?: string;
+      customerEmail?: string;
+      customerAddress?: string;
+      customerCity?: string;
+      customerNote?: string;
+      description?: string;
+    }
+  ) => {
+    try {
+      const res = await fetch(`/api/credit-sales/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Failed to update credit sale");
+      }
+
+      toast.success("Credit sale updated successfully");
+      setCreditSales((prev) =>
+        prev.map((cs) => (cs._id === id ? { ...cs, ...json.creditSale } : cs))
+      );
+      return { success: true };
+    } catch (err: any) {
+      toast.error(err.message || "Network error updating credit sale");
+      return { success: false, error: err.message };
+    }
+  };
+
   const deleteCreditSale = async (id: string) => {
     try {
       const res = await fetch(`/api/credit-sales/${id}`, {
@@ -263,6 +310,7 @@ export const CreditSaleProvider = ({
         createCreditSale,
         addCreditPayment,
         revertCreditSale,
+        updateCreditSale,
         deleteCreditSale,
         setCurrentPage,
         setSearchQuery,

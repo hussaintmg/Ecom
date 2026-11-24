@@ -18,9 +18,11 @@ import {
   X,
   FileText,
   ShieldCheck,
+  Edit2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
+import { EditReceiptModal } from "@/components/dashboard/EditReceiptModal";
 import toast from "@/utils/toast";
 
 const DEFECT_REASONS = [
@@ -111,6 +113,10 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
   const [defectDesc, setDefectDesc] = useState("");
   const [submittingDefective, setSubmittingDefective] = useState(false);
 
+  // Edit Shipment Metadata Modal state
+  const [editReceiptModalOpen, setEditReceiptModalOpen] = useState(false);
+  const [receiptToEdit, setReceiptToEdit] = useState<any>(null);
+
   // Fetch receipts list
   const fetchReceipts = useCallback(
     async (pageToFetch: number, showIndicator = true) => {
@@ -147,6 +153,11 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
   useEffect(() => {
     fetchReceipts(currentPage);
   }, [currentPage, fetchReceipts]);
+
+  // Clear selections when navigating or filtering to prevent ghost actions across pages
+  useEffect(() => {
+    setSelectedReceiptIds([]);
+  }, [currentPage, statusFilter, search]);
 
   const handleToggleSelectAll = () => {
     if (selectedReceiptIds.length === receipts.length && receipts.length > 0) {
@@ -359,6 +370,7 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
         toast.success(`Marked ${qty} units as Good! Sellable stock updated.`);
         setMarkGoodModalOpen(false);
         setGoodNotes("");
+        setSelectedItemForGood(null);
         // Reload active receipt details
         handleOpenInspection(activeReceipt._id);
         fetchReceipts(currentPage, false);
@@ -402,6 +414,7 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
         toast.success(`Marked ${qty} units as Defective (${defectReason}). Added to Defective Inventory.`);
         setMarkDefectiveModalOpen(false);
         setDefectDesc("");
+        setSelectedItemForDefective(null);
         // Reload active receipt details
         handleOpenInspection(activeReceipt._id);
         fetchReceipts(currentPage, false);
@@ -879,6 +892,19 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                     >
                       {totalPending > 0 ? "Inspect Quality" : "View Inspection"}
                     </Button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReceiptToEdit(r);
+                        setEditReceiptModalOpen(true);
+                      }}
+                      className="w-9 h-9 flex items-center justify-center rounded-xl border border-white/10 bg-neutral-800/80 text-neutral-300 hover:text-white hover:bg-neutral-700 hover:border-cyan-500/50 transition-all duration-200 active:scale-95 cursor-pointer"
+                      title="Edit shipment details"
+                      aria-label="Edit shipment details"
+                    >
+                      <Edit2 size={16} />
+                    </button>
 
                     <button
                       type="button"
@@ -1507,7 +1533,10 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setMarkGoodModalOpen(false)}
+                  onClick={() => {
+                    setMarkGoodModalOpen(false);
+                    setSelectedItemForGood(null);
+                  }}
                   disabled={submittingGood}
                 >
                   Cancel
@@ -1593,7 +1622,10 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setMarkDefectiveModalOpen(false)}
+                  onClick={() => {
+                    setMarkDefectiveModalOpen(false);
+                    setSelectedItemForDefective(null);
+                  }}
                   disabled={submittingDefective}
                 >
                   Cancel
@@ -1657,6 +1689,21 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
           </div>
         </div>
       )}
+      {/* Edit Shipment Details Modal */}
+      <EditReceiptModal
+        isOpen={editReceiptModalOpen}
+        onClose={() => {
+          setEditReceiptModalOpen(false);
+          setReceiptToEdit(null);
+        }}
+        receipt={receiptToEdit}
+        onSaved={() => {
+          fetchReceipts(currentPage, false);
+          if (activeReceipt && receiptToEdit && activeReceipt._id === receiptToEdit._id) {
+            handleOpenInspection(activeReceipt._id);
+          }
+        }}
+      />
     </div>
   );
 };

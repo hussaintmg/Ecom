@@ -7,11 +7,13 @@ import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
 import { CustomerCell, CustomerDetailsModal } from "@/components/dashboard/InvoiceCustomer";
 import InvoiceFilterBar, { InvoiceFilterState } from "@/components/dashboard/InvoiceFilterBar";
+import { EditInvoiceModal } from "@/components/dashboard/EditInvoiceModal";
 import {
   RefreshCw,
   ReceiptText,
   Download,
   Trash2,
+  Edit2,
   Phone,
   Mail,
   MapPin,
@@ -46,6 +48,7 @@ const InvoicesInner = () => {
     setCurrentPage,
     loading,
     fetchInvoices,
+    updateInvoice,
     deleteInvoice,
   } = useInvoices();
   const { products, fetchProducts } = useProducts();
@@ -58,6 +61,7 @@ const InvoicesInner = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // Invoice whose full customer record is open in the details sheet
   const [detailInvoice, setDetailInvoice] = useState<any>(null);
+  const [editInvoice, setEditInvoice] = useState<any>(null);
 
   const handleDelete = async (inv: any) => {
     const restoresStock = (inv.type || "Sell") === "Sell";
@@ -373,6 +377,13 @@ const InvoicesInner = () => {
                       <td className="px-5 py-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
+                            onClick={() => setEditInvoice(inv)}
+                            className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                            title="Edit Invoice"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
                             onClick={() => handleDownload(inv)}
                             disabled={downloadingId === inv._id}
                             className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
@@ -536,6 +547,13 @@ const InvoicesInner = () => {
                         By {inv.soldBy?.name || "Unknown"}
                       </div>
                       <button
+                        onClick={() => setEditInvoice(inv)}
+                        className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary"
+                        title="Edit Invoice"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
                         onClick={() => handleDownload(inv)}
                         disabled={downloadingId === inv._id}
                         className="p-1.5 rounded-lg border hover:bg-primary/10 transition-colors text-primary disabled:opacity-50"
@@ -625,6 +643,14 @@ const InvoicesInner = () => {
         onClose={() => setDetailInvoice(null)}
         invoice={detailInvoice}
         currency="Rs."
+      />
+
+      {/* ── Edit invoice modal ── */}
+      <EditInvoiceModal
+        isOpen={!!editInvoice}
+        onClose={() => setEditInvoice(null)}
+        invoice={editInvoice}
+        onSave={updateInvoice}
       />
     </div>
   );

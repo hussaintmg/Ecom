@@ -64,6 +64,49 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    const user = getUserFromRequest(req);
+    if (!user || (user.role !== "admin" && user.role !== "owner")) {
+      return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const body = await req.json();
+    const { defectReason, description, notes } = body;
+
+    const defective = await DefectiveInventory.findById(id);
+    if (!defective) {
+      return NextResponse.json(
+        { success: false, error: "Defective inventory record not found" },
+        { status: 404 }
+      );
+    }
+
+    if (defectReason !== undefined) defective.defectReason = defectReason.trim();
+    if (description !== undefined) defective.description = description.trim();
+    if (notes !== undefined) defective.notes = notes.trim();
+
+    await defective.save();
+
+    return NextResponse.json({
+      success: true,
+      message: "Defective record updated successfully",
+      defective,
+    });
+  } catch (error: any) {
+    console.error("PUT /api/inventory/defective/[id] error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update defective record" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

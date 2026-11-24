@@ -9,6 +9,7 @@ import CustomerDetailsForm, {
   CustomerFormValue,
   emptyCustomer,
 } from "@/components/dashboard/CustomerDetailsForm";
+import toast from "@/utils/toast";
 import { RefreshCw, ShoppingCart, Search, Package, ChevronLeft, ChevronRight, Plus, Trash2, Edit2, CheckCircle2, X } from "lucide-react";
 
 const STOCK_FILTERS = [
@@ -167,12 +168,12 @@ const SellInner = () => {
     const price = Number(salePrice);
 
     if (qty <= 0) {
-      alert("Quantity must be greater than zero");
+      toast.error("Quantity must be greater than zero");
       return;
     }
 
     if (price <= 0) {
-      alert("Sale price must be greater than zero");
+      toast.error("Sale price must be greater than zero");
       return;
     }
 
@@ -185,7 +186,9 @@ const SellInner = () => {
     const totalNeeded = existingQtyInCart + qty;
 
     if (totalNeeded > selectedProduct.stock) {
-      alert(`stock kam hai aur beche ziyada nahi sakte!\n\nAvailable Stock: ${selectedProduct.stock}\nAlready Appended: ${existingQtyInCart}\nAttempted to Add: ${qty}\nTotal required (${totalNeeded}) exceeds availability.`);
+      toast.error(
+        `Insufficient stock. Available Stock: ${selectedProduct.stock}, In Cart: ${existingQtyInCart}, Attempted: ${qty}`
+      );
       return;
     }
 
@@ -201,7 +204,7 @@ const SellInner = () => {
       };
       setAppendedProducts(updatedList);
       setEditingIndex(null);
-      alert("Item updated successfully inside invoice list!");
+      toast.success("Item updated in invoice list!");
     } else {
       // Check if product is already appended to consolidate
       const existingIdx = appendedProducts.findIndex(item => item.productId === selectedProduct._id);
@@ -272,7 +275,7 @@ const SellInner = () => {
   const handleCheckout = async () => {
     if (appendedProducts.length === 0) return;
     if (!customer.customerName.trim()) {
-      alert("Customer Name is required");
+      toast.error("Customer name is required");
       return;
     }
 

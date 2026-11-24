@@ -4,6 +4,7 @@ import React from "react";
 import { X, Printer, Download, ScanBarcode } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { generateBarcodeLabelSVG } from "@/utils/barcodeGenerator";
+import toast from "@/utils/toast";
 
 interface SingleBarcodeModalProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ const SingleBarcodeModal: React.FC<SingleBarcodeModalProps> = ({
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Please allow popups to print barcode");
+      toast.error("Please allow popups to print barcode");
       return;
     }
 

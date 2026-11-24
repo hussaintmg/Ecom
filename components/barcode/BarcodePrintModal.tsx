@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Printer, Download, Package, RefreshCw, CheckCircle2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { generateBarcodeLabelSVG } from "@/utils/barcodeGenerator";
+import toast from "@/utils/toast";
 
 interface BarcodePrintModalProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err: any) {
-      alert(err.message || "Error downloading barcodes ZIP");
+      toast.error(err.message || "Error downloading barcodes ZIP");
     } finally {
       setDownloadingZip(false);
     }

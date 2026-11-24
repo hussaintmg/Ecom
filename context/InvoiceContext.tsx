@@ -89,6 +89,18 @@ interface InvoiceContextType {
   ) => Promise<void>;
   createInvoice: (data: CreateInvoicePayload) => Promise<any | null>;
   getInvoiceById: (id: string) => Promise<InvoiceItem | null>;
+  updateInvoice: (
+    id: string,
+    data: {
+      customerName?: string;
+      customerPhone?: string;
+      customerEmail?: string;
+      customerAddress?: string;
+      customerCity?: string;
+      customerNote?: string;
+      products?: any[];
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteInvoice: (id: string) => Promise<void>;
   setCurrentPage: (page: number) => void;
   setSearchQuery: (query: string) => void;
@@ -234,6 +246,45 @@ export const InvoiceProvider = ({
     [],
   );
 
+  const updateInvoice = useCallback(
+    async (
+      id: string,
+      data: {
+        customerName?: string;
+        customerPhone?: string;
+        customerEmail?: string;
+        customerAddress?: string;
+        customerCity?: string;
+        customerNote?: string;
+        products?: any[];
+      }
+    ) => {
+      try {
+        const res = await fetch(`/api/invoices/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (res.ok && result.success) {
+          toast.success("Invoice updated successfully");
+          setInvoices((prev) =>
+            prev.map((inv) => (inv._id === id ? { ...inv, ...result.invoice } : inv))
+          );
+          return { success: true };
+        } else {
+          const errMsg = result.error || "Failed to update invoice";
+          toast.error(errMsg);
+          return { success: false, error: errMsg };
+        }
+      } catch (err: any) {
+        toast.error("Network error updating invoice");
+        return { success: false, error: err.message };
+      }
+    },
+    []
+  );
+
   const deleteInvoice = useCallback(
     async (id: string) => {
       try {
@@ -272,6 +323,7 @@ export const InvoiceProvider = ({
         fetchInvoices,
         createInvoice,
         getInvoiceById,
+        updateInvoice,
         deleteInvoice,
         setCurrentPage,
         setSearchQuery,

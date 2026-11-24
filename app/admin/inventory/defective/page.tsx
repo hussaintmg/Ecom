@@ -22,6 +22,7 @@ import {
   Inbox,
   RotateCcw,
   PackageCheck,
+  Edit2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
@@ -200,6 +201,52 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   const [stockLogsHistory, setStockLogsHistory] = useState<any[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // 8. Edit Defective Details Modal State
+  const [editDefectiveModalOpen, setEditDefectiveModalOpen] = useState(false);
+  const [editDefectReason, setEditDefectReason] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [submittingEditDefective, setSubmittingEditDefective] = useState(false);
+
+  const handleOpenEditDefective = (item: any) => {
+    setActiveDefective(item);
+    setEditDefectReason(item.defectReason || "");
+    setEditDescription(item.description || "");
+    setEditNotes(item.notes || "");
+    setEditDefectiveModalOpen(true);
+  };
+
+  const handleConfirmEditDefective = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDefective) return;
+
+    setSubmittingEditDefective(true);
+    try {
+      const res = await fetch(`/api/inventory/defective/${activeDefective._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defectReason: editDefectReason.trim(),
+          description: editDescription.trim(),
+          notes: editNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Defective record updated successfully!");
+        setEditDefectiveModalOpen(false);
+        setActiveDefective(null);
+        fetchDefectiveList(currentPage, false);
+      } else {
+        toast.error(data.error || "Failed to update defective record");
+      }
+    } catch {
+      toast.error("Network error updating defective record");
+    } finally {
+      setSubmittingEditDefective(false);
+    }
+  };
+
   // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -248,6 +295,11 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   useEffect(() => {
     fetchDefectiveList(currentPage);
   }, [currentPage, fetchDefectiveList]);
+
+  // Reset selected checkboxes on page/filter change to avoid cross-page mutation
+  useEffect(() => {
+    setSelectedDefectiveIds([]);
+  }, [currentPage, debouncedSearch, statusFilter, reasonFilter, onlyAvailable, onlyRepairing]);
 
   // Action: Open Move to Good
   const handleOpenMoveToGood = (item: any) => {
@@ -385,6 +437,11 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
   // Action: Open Complete Repair Modal
   const handleOpenCompleteRepair = async (item: any) => {
     setActiveDefective(item);
+    setActiveRepairJobs([]);
+    setSelectedJob(null);
+    setSuccessQty("1");
+    setFailQty("0");
+    setActualCost("0");
     setCompleteProblem("");
     setCompleteWorkDone("");
     setCompleteNotes("");
@@ -405,6 +462,8 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
         } else {
           setSelectedJob(null);
         }
+      } else {
+        toast.error(data.error || "Failed to load repair jobs");
       }
     } catch {
       toast.error("Failed to load active repair jobs");
@@ -413,7 +472,18 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
 
   const handleConfirmCompleteRepair = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedJob) return;
+    if (!selectedJob || !activeDefective) return;
+
+    // Strict validation: Ensure selectedJob belongs to the activeDefective record
+    const jobDefectiveId =
+      selectedJob.defectiveInventoryId?._id ||
+      selectedJob.defectiveInventoryId ||
+      selectedJob.defectiveInventory?._id ||
+      selectedJob.defectiveInventory;
+    if (jobDefectiveId && String(jobDefectiveId) !== String(activeDefective._id)) {
+      toast.error("Mismatched repair job. Please re-open the repair modal.");
+      return;
+    }
 
     const sQty = Number(successQty);
     const fQty = Number(failQty);
@@ -446,6 +516,9 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
           `Repair completed: ${sQty} units added to sellable stock, ${fQty} units returned to defective.`
         );
         setCompleteModalOpen(false);
+        setActiveDefective(null);
+        setSelectedJob(null);
+        setActiveRepairJobs([]);
         if (data.billData) {
           setBillData(data.billData);
           setBillModalOpen(true);
@@ -1518,6 +1591,17 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                         </Button>
                       )}
 
+                      {/* Edit Defective Details */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenEditDefective(item)}
+                        className="p-1.5 h-7 w-7 text-primary hover:bg-primary/10"
+                        title="Edit defective details"
+                      >
+                        <Edit2 size={13} />
+                      </Button>
+
                       {/* Single Item Delete */}
                       <Button
                         size="sm"
@@ -1689,12 +1773,53 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
       {/* ========================================================= */}
       {/* ─── MODAL 2: COMPLETE REPAIR ─── */}
       {/* ========================================================= */}
-      {completeModalOpen && (
+      {completeModalOpen && activeDefective && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
           <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-md w-full flex flex-col gap-4">
-            <div className="flex items-center gap-2.5 border-b pb-3 text-emerald-600">
-              <CheckCircle2 size={20} />
-              <h4 className="font-black text-base text-foreground">Complete Repair</h4>
+            <div className="flex items-center justify-between border-b pb-3 text-emerald-600">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 size={20} />
+                <h4 className="font-black text-base text-foreground">Complete Repair</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCompleteModalOpen(false);
+                  setActiveDefective(null);
+                  setSelectedJob(null);
+                  setActiveRepairJobs([]);
+                }}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Active Defective Item Banner */}
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-muted/40 border">
+              {activeDefective.product?.images?.[0] ? (
+                <img
+                  src={
+                    typeof activeDefective.product.images[0] === "string"
+                      ? activeDefective.product.images[0]
+                      : activeDefective.product.images[0]?.url
+                  }
+                  alt={activeDefective.product?.name}
+                  className="w-10 h-10 rounded-xl object-cover border"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                  DEF
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black text-foreground truncate">
+                  {activeDefective.product?.name || "Product"}
+                </p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  Defect: {activeDefective.defectReason || "Reported Fault"}
+                </p>
+              </div>
             </div>
 
             {activeRepairJobs.length === 0 ? (
@@ -1829,7 +1954,12 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setCompleteModalOpen(false)}
+                    onClick={() => {
+                      setCompleteModalOpen(false);
+                      setActiveDefective(null);
+                      setSelectedJob(null);
+                      setActiveRepairJobs([]);
+                    }}
                     disabled={submittingComplete}
                   >
                     Cancel
@@ -3050,6 +3180,126 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                 Delete {itemToDelete ? "Entry" : `(${selectedDefectiveIds.length})`}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ─── MODAL 8: EDIT DEFECTIVE DETAILS ─── */}
+      {/* ========================================================= */}
+      {editDefectiveModalOpen && activeDefective && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-card border rounded-3xl p-6 shadow-2xl max-w-md w-full flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3 text-primary">
+              <div className="flex items-center gap-2.5">
+                <Edit2 size={18} />
+                <h4 className="font-black text-base text-foreground">Edit Defective Item Details</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditDefectiveModalOpen(false);
+                  setActiveDefective(null);
+                }}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-muted/40 border">
+              {activeDefective.product?.images?.[0] ? (
+                <img
+                  src={
+                    typeof activeDefective.product.images[0] === "string"
+                      ? activeDefective.product.images[0]
+                      : activeDefective.product.images[0]?.url
+                  }
+                  alt={activeDefective.product?.name}
+                  className="w-10 h-10 rounded-xl object-cover border"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                  DEF
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black text-foreground truncate">
+                  {activeDefective.product?.name || "Product"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Current Available Defective: {activeDefective.availableDefectiveQuantity} units
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmEditDefective} className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Defect Reason *</span>
+                <select
+                  value={editDefectReason}
+                  onChange={(e) => setEditDefectReason(e.target.value)}
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                  required
+                >
+                  {DEFECT_REASONS.filter((r) => r !== "All").map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Description / Fault Details</span>
+                <textarea
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Detailed fault explanation, damaged parts, etc."
+                  className="w-full rounded-xl border bg-background p-2.5 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-muted-foreground">
+                <span>Internal Notes</span>
+                <input
+                  type="text"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Internal warehouse notes"
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </label>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditDefectiveModalOpen(false);
+                    setActiveDefective(null);
+                  }}
+                  disabled={submittingEditDefective}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={submittingEditDefective}
+                  className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
+                >
+                  {submittingEditDefective ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Edit2 size={14} />
+                  )}
+                  Save Changes
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

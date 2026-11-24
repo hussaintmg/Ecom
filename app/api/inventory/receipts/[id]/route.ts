@@ -51,3 +51,67 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    const user = getUserFromRequest(req);
+    if (!user || (user.role !== "admin" && user.role !== "owner")) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const body = await req.json();
+    const { vendor, receiptNumber, origin, vendorContact, notes, receivedAt } = body;
+
+    const receipt = await InventoryReceipt.findById(id);
+    if (!receipt) {
+      return NextResponse.json(
+        { success: false, error: "Stock receipt not found" },
+        { status: 404 }
+      );
+    }
+
+    if (receiptNumber && receiptNumber.trim() !== receipt.receiptNumber) {
+      const existing = await InventoryReceipt.findOne({
+        receiptNumber: receiptNumber.trim(),
+        _id: { $ne: receipt._id },
+      });
+      if (existing) {
+        return NextResponse.json(
+          { success: false, error: "Receipt reference number already exists" },
+          { status: 400 }
+        );
+      }
+      receipt.receiptNumber = receiptNumber.trim();
+    }
+
+    if (vendor !== undefined) receipt.vendor = vendor.trim() || receipt.vendor;
+    if (origin !== undefined) receipt.origin = origin.trim() || receipt.origin;
+    if (vendorContact !== undefined) receipt.vendorContact = vendorContact.trim();
+    if (notes !== undefined) receipt.notes = notes.trim();
+    if (receivedAt) {
+      const parsedDate = new Date(receivedAt);
+      if (!isNaN(parsedDate.getTime())) {
+        receipt.receivedAt = parsedDate;
+      }
+    }
+
+    await receipt.save();
+
+    return NextResponse.json({
+      success: true,
+      message: "Shipment details updated successfully",
+      receipt,
+    });
+  } catch (error: any) {
+    console.error("PUT /api/inventory/receipts/[id] error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update receipt" },
+      { status: 500 }
+    );
+  }
+}
