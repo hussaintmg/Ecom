@@ -21,6 +21,7 @@ import {
   Trash2,
   ArrowLeftRight,
   Lock,
+  Plus,
 } from "lucide-react";
 import toast from "@/utils/toast";
 
@@ -56,6 +57,7 @@ export const EditReceiptModal: React.FC<EditReceiptModalProps> = ({
   const [notes, setNotes] = useState("");
   const [receivedAt, setReceivedAt] = useState("");
   const [items, setItems] = useState<EditableReceiptRow[]>([]);
+  const [showAddPicker, setShowAddPicker] = useState(false);
   const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -66,6 +68,7 @@ export const EditReceiptModal: React.FC<EditReceiptModalProps> = ({
       setOrigin(receipt.origin || "Taiwan");
       setVendorContact(receipt.vendorContact || "");
       setNotes(receipt.notes || "");
+      setShowAddPicker(false);
       setSwappingIndex(null);
 
       if (receipt.receivedAt) {
@@ -341,16 +344,36 @@ export const EditReceiptModal: React.FC<EditReceiptModalProps> = ({
 
           {/* Manifest Items Editor */}
           <div className="space-y-3 pt-3 border-t border-border">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Package size={13} className="text-amber-600" /> Shipment Manifest Items ({items.length})
               </h4>
-              <EditModalProductPicker
-                onSelect={handleAddProduct}
-                buttonLabel="Add Product to Shipment"
-                excludeIds={items.map((it) => it.productId)}
-              />
+              <button
+                type="button"
+                onClick={() => setShowAddPicker((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold active:scale-[0.98] transition-all cursor-pointer shadow-2xs shrink-0 ${
+                  showAddPicker
+                    ? "border-amber-600 bg-amber-600 text-white"
+                    : "border-amber-600/25 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:border-amber-600/40 dark:bg-amber-500/15 dark:text-amber-300"
+                }`}
+              >
+                <Plus size={14} />
+                {showAddPicker ? "Hide Picker" : "Add Product to Shipment"}
+              </button>
             </div>
+
+            <AnimatePresence>
+              {showAddPicker && (
+                <div className="w-full">
+                  <EditModalProductPicker
+                    autoOpen
+                    onSelect={handleAddProduct}
+                    onCancel={() => setShowAddPicker(false)}
+                    excludeIds={items.map((it) => it.productId)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence initial={false}>
               <div className="space-y-2.5">

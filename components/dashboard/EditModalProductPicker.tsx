@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, Package, Plus, RefreshCw, Check, X } from "lucide-react";
+import { motion } from "framer-motion";
+import { Search, Package, Plus, RefreshCw, Check, X, SlidersHorizontal } from "lucide-react";
 
 export interface CatalogProductOption {
   _id: string;
@@ -14,6 +14,8 @@ export interface CatalogProductOption {
   barcode?: string;
 }
 
+type StockFilterValue = "All" | "InStock" | "OutOfStock";
+
 interface EditModalProductPickerProps {
   onSelect: (product: CatalogProductOption) => void;
   onCancel?: () => void;
@@ -23,6 +25,7 @@ interface EditModalProductPickerProps {
   compact?: boolean;
   excludeIds?: string[];
   autoOpen?: boolean;
+  defaultStockFilter?: StockFilterValue;
 }
 
 export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
@@ -34,9 +37,11 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
   compact = false,
   excludeIds = [],
   autoOpen = false,
+  defaultStockFilter = "All",
 }) => {
   const [open, setOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
+  const [stockFilter, setStockFilter] = useState<StockFilterValue>(defaultStockFilter);
   const [results, setResults] = useState<CatalogProductOption[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -56,6 +61,7 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
         const params = new URLSearchParams();
         params.set("limit", "12");
         if (query.trim()) params.set("search", query.trim());
+        if (stockFilter !== "All") params.set("stock", stockFilter);
         const res = await fetch(`/api/products?${params.toString()}`);
         const data = await res.json();
         if (active && res.ok) {
@@ -66,13 +72,13 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
       } finally {
         if (active) setLoading(false);
       }
-    }, 220);
+    }, 200);
 
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [query, open]);
+  }, [query, stockFilter, open]);
 
   if (!open && !autoOpen) {
     return (
@@ -89,17 +95,18 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+      initial={{ opacity: 0, y: -6, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      exit={{ opacity: 0, y: -6, scale: 0.99 }}
       transition={{ duration: 0.16 }}
-      className={`rounded-2xl border border-border bg-card shadow-lg ${
+      className={`w-full min-w-0 max-w-full rounded-2xl border border-border bg-card shadow-lg overflow-hidden ${
         compact ? "p-2.5" : "p-3"
       } space-y-2.5`}
     >
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
+      {/* Top Bar: Search + Stock Filter + Close */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+        <div className="relative flex-1 min-w-0">
+          <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground pointer-events-none" />
           <input
             ref={inputRef}
             type="text"
@@ -109,24 +116,46 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
             className="w-full rounded-xl border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setQuery("");
-            if (onCancel) {
-              onCancel();
-            } else {
-              setOpen(false);
-            }
-          }}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all cursor-pointer"
-          title="Close picker"
-        >
-          <X size={14} />
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="relative flex-1 sm:flex-initial">
+            <SlidersHorizontal
+              size={13}
+              className="absolute left-2.5 top-2.5 text-muted-foreground pointer-events-none"
+            />
+            <select
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value as StockFilterValue)}
+              aria-label="Filter by stock status"
+              className="w-full sm:w-36 rounded-xl border border-input bg-background pl-8 pr-2.5 py-2 text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all cursor-pointer"
+            >
+              <option value="All">All Stock</option>
+              <option value="InStock">In Stock</option>
+              <option value="OutOfStock">Out of Stock</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setStockFilter(defaultStockFilter);
+              if (onCancel) {
+                onCancel();
+              } else {
+                setOpen(false);
+              }
+            }}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all cursor-pointer shrink-0"
+            title="Close picker"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
-      <div className="max-h-52 overflow-y-auto divide-y divide-border/60 rounded-xl border border-border/80 bg-background">
+      {/* Results Dropdown List */}
+      <div className="w-full max-h-56 overflow-y-auto divide-y divide-border/60 rounded-xl border border-border/80 bg-background">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-5 text-xs text-muted-foreground">
             <RefreshCw size={14} className="animate-spin text-emerald-600" />
@@ -156,7 +185,7 @@ export const EditModalProductPicker: React.FC<EditModalProductPickerProps> = ({
                   setQuery("");
                   if (!autoOpen) setOpen(false);
                 }}
-                className="w-full flex items-center justify-between gap-2.5 p-2.5 text-left hover:bg-muted/60 transition-colors disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer group"
+                className="w-full min-w-0 flex items-center justify-between gap-2.5 p-2.5 text-left hover:bg-muted/60 transition-colors disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer group"
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   {imgUrl ? (

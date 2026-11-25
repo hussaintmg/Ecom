@@ -22,6 +22,7 @@ import {
   Trash2,
   ArrowLeftRight,
   ReceiptText,
+  Plus,
 } from "lucide-react";
 import { InvoiceItem } from "@/context/InvoiceContext";
 import toast from "@/utils/toast";
@@ -72,6 +73,7 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   const [customerCity, setCustomerCity] = useState("");
   const [customerNote, setCustomerNote] = useState("");
   const [products, setProducts] = useState<EditableInvoiceRow[]>([]);
+  const [showAddPicker, setShowAddPicker] = useState(false);
   const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -83,6 +85,7 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
       setCustomerAddress(invoice.customerAddress || "");
       setCustomerCity(invoice.customerCity || "");
       setCustomerNote(invoice.customerNote || "");
+      setShowAddPicker(false);
       setSwappingIndex(null);
 
       const rawItems =
@@ -394,17 +397,37 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
 
           {/* Line Items Section */}
           <div className="space-y-3 pt-3 border-t border-border">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Package size={13} className="text-emerald-600" /> Products & Quantities ({products.length} items • {totalUnits} units)
               </h4>
-              <EditModalProductPicker
-                onSelect={handleAddProduct}
-                buttonLabel="Add Product"
-                requireStock={isSellInvoice}
-                excludeIds={products.map((p) => p.productId)}
-              />
+              <button
+                type="button"
+                onClick={() => setShowAddPicker((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold active:scale-[0.98] transition-all cursor-pointer shadow-2xs shrink-0 ${
+                  showAddPicker
+                    ? "border-emerald-600 bg-emerald-600 text-white"
+                    : "border-emerald-600/25 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-600/40 dark:bg-emerald-500/15 dark:text-emerald-300"
+                }`}
+              >
+                <Plus size={14} />
+                {showAddPicker ? "Hide Picker" : "Add Product"}
+              </button>
             </div>
+
+            <AnimatePresence>
+              {showAddPicker && (
+                <div className="w-full">
+                  <EditModalProductPicker
+                    autoOpen
+                    onSelect={handleAddProduct}
+                    onCancel={() => setShowAddPicker(false)}
+                    requireStock={isSellInvoice}
+                    excludeIds={products.map((p) => p.productId)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
 
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2.5 text-amber-800 text-xs dark:bg-amber-500/10 dark:border-amber-500/25 dark:text-amber-300">
               <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-600" />

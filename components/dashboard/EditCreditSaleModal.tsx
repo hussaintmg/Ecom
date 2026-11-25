@@ -22,6 +22,7 @@ import {
   Trash2,
   ArrowLeftRight,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { CreditSaleItem } from "@/context/CreditSaleContext";
 import toast from "@/utils/toast";
@@ -73,6 +74,7 @@ export const EditCreditSaleModal: React.FC<EditCreditSaleModalProps> = ({
   const [customerNote, setCustomerNote] = useState("");
   const [description, setDescription] = useState("");
   const [products, setProducts] = useState<EditableCreditRow[]>([]);
+  const [showAddPicker, setShowAddPicker] = useState(false);
   const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -84,6 +86,7 @@ export const EditCreditSaleModal: React.FC<EditCreditSaleModalProps> = ({
       setCustomerAddress(creditSale.customerAddress || "");
       setCustomerCity(creditSale.customerCity || "");
       setCustomerNote(creditSale.customerNote || "");
+      setShowAddPicker(false);
       setSwappingIndex(null);
 
       const desc =
@@ -436,18 +439,38 @@ export const EditCreditSaleModal: React.FC<EditCreditSaleModalProps> = ({
 
           {/* Line Items Editor */}
           <div className="space-y-3 pt-3 border-t border-border">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Package size={13} className="text-sky-600" /> Credit Items ({products.length} items •{" "}
                 {totalUnits} units)
               </h4>
-              <EditModalProductPicker
-                onSelect={handleAddProduct}
-                buttonLabel="Add Product"
-                requireStock={!isReverted}
-                excludeIds={products.map((p) => p.productId)}
-              />
+              <button
+                type="button"
+                onClick={() => setShowAddPicker((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold active:scale-[0.98] transition-all cursor-pointer shadow-2xs shrink-0 ${
+                  showAddPicker
+                    ? "border-sky-600 bg-sky-600 text-white"
+                    : "border-sky-600/25 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:border-sky-600/40 dark:bg-sky-500/15 dark:text-sky-300"
+                }`}
+              >
+                <Plus size={14} />
+                {showAddPicker ? "Hide Picker" : "Add Product"}
+              </button>
             </div>
+
+            <AnimatePresence>
+              {showAddPicker && (
+                <div className="w-full">
+                  <EditModalProductPicker
+                    autoOpen
+                    onSelect={handleAddProduct}
+                    onCancel={() => setShowAddPicker(false)}
+                    requireStock={!isReverted}
+                    excludeIds={products.map((p) => p.productId)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
 
             {!isReverted && (
               <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 flex items-start gap-2.5 text-sky-900 text-xs dark:bg-sky-500/10 dark:border-sky-500/25 dark:text-sky-200">

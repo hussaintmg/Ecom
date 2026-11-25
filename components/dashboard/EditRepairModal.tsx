@@ -65,6 +65,7 @@ export const EditRepairModal: React.FC<EditRepairModalProps> = ({
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<EditableRepairRow[]>([]);
+  const [showAddCustomerPicker, setShowAddCustomerPicker] = useState(false);
   const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
   const [addingDefectiveOpen, setAddingDefectiveOpen] = useState(false);
   const [defectiveOptions, setDefectiveOptions] = useState<any[]>([]);
@@ -83,6 +84,7 @@ export const EditRepairModal: React.FC<EditRepairModalProps> = ({
       setVendorPhone(repairBatch.vendorPhone || "");
       setVendorAddress(repairBatch.vendorAddress || "");
       setNotes(repairBatch.notes || "");
+      setShowAddCustomerPicker(false);
       setSwappingIndex(null);
       setAddingDefectiveOpen(false);
       setDefectiveSearch("");
@@ -341,7 +343,7 @@ export const EditRepairModal: React.FC<EditRepairModalProps> = ({
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
-      className="rounded-2xl border border-border bg-card shadow-lg p-3 space-y-2.5"
+      className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-lg p-3 space-y-2.5"
     >
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
@@ -524,29 +526,51 @@ export const EditRepairModal: React.FC<EditRepairModalProps> = ({
 
           {/* Line Items Section */}
           <div className="space-y-3 pt-3 border-t border-border">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Package size={13} className="text-amber-600" /> Repair Products ({items.length})
               </h4>
 
               {isCustomer ? (
-                <EditModalProductPicker
-                  onSelect={handleAddCustomerProduct}
-                  buttonLabel="Add Product"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerPicker((v) => !v)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold active:scale-[0.98] transition-all cursor-pointer shrink-0 ${
+                    showAddCustomerPicker
+                      ? "border-amber-600 bg-amber-600 text-white"
+                      : "border-amber-600/25 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  }`}
+                >
+                  <Plus size={14} /> {showAddCustomerPicker ? "Hide Picker" : "Add Product"}
+                </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => setAddingDefectiveOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-600/25 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 active:scale-[0.98] transition-all cursor-pointer"
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold active:scale-[0.98] transition-all cursor-pointer shrink-0 ${
+                    addingDefectiveOpen
+                      ? "border-amber-600 bg-amber-600 text-white"
+                      : "border-amber-600/25 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  }`}
                 >
-                  <Plus size={14} /> Add Defective Item
+                  <Plus size={14} /> {addingDefectiveOpen ? "Hide Picker" : "Add Defective Item"}
                 </button>
               )}
             </div>
 
             <AnimatePresence>
-              {!isCustomer && addingDefectiveOpen && renderDefectivePicker(null)}
+              {isCustomer && showAddCustomerPicker && (
+                <div className="w-full">
+                  <EditModalProductPicker
+                    autoOpen
+                    onSelect={handleAddCustomerProduct}
+                    onCancel={() => setShowAddCustomerPicker(false)}
+                  />
+                </div>
+              )}
+              {!isCustomer && addingDefectiveOpen && (
+                <div className="w-full">{renderDefectivePicker(null)}</div>
+              )}
             </AnimatePresence>
 
             <AnimatePresence initial={false}>
