@@ -5,6 +5,7 @@ import Invoice from "@/models/Invoice";
 import Product from "@/models/Product";
 import StockLog from "@/models/StockLog";
 import { getUserFromRequest } from "@/utils/authHelpers";
+import { reconcileLineItemsAndStock } from "@/utils/stockDelta";
 import "@/models/User";
 import "@/models/Category";
 
@@ -107,9 +108,64 @@ export async function PUT(
     if (body.customerNote !== undefined) creditSale.customerNote = body.customerNote.trim();
     if (body.description !== undefined) creditSale.description = body.description.trim();
 
+    if (body.products !== undefined) {
+      if (!Array.isArray(body.products) || body.products.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "Credit sale must contain at least one product item." },
+          { status: 400 }
+        );
+      }
+
+      const candidateTotal = body.products.reduce(
+        (sum: number, p: any) => sum + (Number(p.salePrice) || 0),
+        0
+      );
+      const paid = Number(creditSale.paidAmount || 0);
+      if (candidateTotal < paid) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Updated total (Rs. ${candidateTotal.toLocaleString()}) cannot be less than already paid amount (Rs. ${paid.toLocaleString()}).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const reconcile = await reconcileLineItemsAndStock({
+        oldItems: creditSale.products || [],
+        newItemsRaw: body.products,
+        adjustWarehouseStock: !creditSale.stockRestored,
+        userId: user.id,
+        invoiceId: creditSale.generatedInvoice || null,
+        logContextLabel: `Credit Sale #${creditSale._id.toString().slice(-6).toUpperCase()} updated (${creditSale.customerName || "Customer"})`,
+      });
+
+      if (!reconcile.ok) {
+        return NextResponse.json(
+          { success: false, error: reconcile.error },
+          { status: reconcile.status }
+        );
+      }
+
+      creditSale.products = reconcile.items as any;
+      creditSale.totalAmount = reconcile.totalAmount;
+      creditSale.remainingAmount = Math.max(0, reconcile.totalAmount - paid);
+
+      if (creditSale.status !== "Reverted") {
+        if (creditSale.remainingAmount === 0) {
+          creditSale.status = "Paid";
+          if (!creditSale.generatedInvoice) {
+            creditSale.generatedInvoice = await createPaidInvoice(creditSale, user.id);
+          }
+        } else {
+          creditSale.status = "Open";
+        }
+      }
+    }
+
     await creditSale.save();
 
-    // If an associated invoice exists, keep customer details synchronized
+    // If an associated invoice exists, keep customer details & items synchronized
     if (creditSale.generatedInvoice) {
       await Invoice.findByIdAndUpdate(creditSale.generatedInvoice, {
         customerName: creditSale.customerName,
@@ -118,6 +174,8 @@ export async function PUT(
         customerAddress: creditSale.customerAddress,
         customerCity: creditSale.customerCity,
         customerNote: creditSale.customerNote,
+        products: creditSale.products,
+        totalAmount: creditSale.totalAmount,
       });
     }
 

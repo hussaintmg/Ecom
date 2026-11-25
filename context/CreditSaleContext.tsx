@@ -100,6 +100,7 @@ interface CreditSaleContextType {
       customerCity?: string;
       customerNote?: string;
       description?: string;
+      products?: any[];
     }
   ) => Promise<{ success: boolean; error?: string }>;
   deleteCreditSale: (id: string) => Promise<boolean>;
@@ -248,6 +249,7 @@ export const CreditSaleProvider = ({
       customerCity?: string;
       customerNote?: string;
       description?: string;
+      products?: any[];
     }
   ) => {
     try {
@@ -263,9 +265,7 @@ export const CreditSaleProvider = ({
       }
 
       toast.success("Credit sale updated successfully");
-      setCreditSales((prev) =>
-        prev.map((cs) => (cs._id === id ? { ...cs, ...json.creditSale } : cs))
-      );
+      await fetchCreditSales(currentPage, searchQuery);
       return { success: true };
     } catch (err: any) {
       toast.error(err.message || "Network error updating credit sale");

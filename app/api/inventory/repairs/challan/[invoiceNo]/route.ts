@@ -37,9 +37,45 @@ export async function GET(
     });
   } catch (error: any) {
     console.error("GET /api/inventory/repairs/challan error:", error);
+    return NextResponse.json({
+      success: false,
+      error: error.message || "Failed to fetch repair challan",
+    }, { status: 404 });
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ invoiceNo: string }> }
+) {
+  try {
+    await connectDB();
+    const user = getUserFromRequest(req);
+    if (!user || (user.role !== "admin" && user.role !== "owner")) {
+      return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
+    }
+
+    const { invoiceNo } = await params;
+    if (!invoiceNo) {
+      return NextResponse.json(
+        { success: false, error: "Invoice/Challan number is required" },
+        { status: 400 }
+      );
+    }
+
+    const body = await req.json();
+    const result = await InventoryService.updateRepairBatch(
+      decodeURIComponent(invoiceNo),
+      body,
+      user.id
+    );
+
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("PUT /api/inventory/repairs/challan error:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch repair challan" },
-      { status: 404 }
+      { success: false, error: error.message || "Failed to update repair challan" },
+      { status: 400 }
     );
   }
 }

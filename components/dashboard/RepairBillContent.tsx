@@ -3,9 +3,11 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import Button from "@/components/ui/Button";
 import TooltipCell from "@/components/ui/TooltipCell";
 import BillModal from "@/components/BillModal";
+import { EditRepairModal } from "@/components/dashboard/EditRepairModal";
 import { toast } from "@/components/ui/Toast";
 import {
   Wrench,
+  Edit2,
   Search,
   Package,
   Plus,
@@ -145,6 +147,8 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
   const [batchCompleteNotes, setBatchCompleteNotes] = useState("");
   const [completing, setCompleting] = useState(false);
   const [expandedChallans, setExpandedChallans] = useState<Record<string, boolean>>({});
+  const [editRepairModalOpen, setEditRepairModalOpen] = useState(false);
+  const [repairToEdit, setRepairToEdit] = useState<any>(null);
 
   // Fetch product catalog for customer repairs
   const fetchCatalogProducts = useCallback(async () => {
@@ -2386,6 +2390,17 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
                             </td>
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRepairToEdit(job);
+                                    setEditRepairModalOpen(true);
+                                  }}
+                                  className="h-7 px-2.5 rounded-lg border border-border bg-background text-foreground hover:bg-amber-50 hover:text-amber-700 hover:border-amber-500/40 text-[11px] font-bold inline-flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                  title="Edit Repair Challan & Products"
+                                >
+                                  <Edit2 size={12} /> Edit
+                                </button>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -2817,6 +2832,20 @@ export const RepairBillContent: React.FC<RepairBillContentProps> = ({
           billData={lastBillData}
         />
       )}
+
+      {/* ─── MODAL 3: EDIT REPAIR CHALLAN MODAL ─── */}
+      <EditRepairModal
+        isOpen={editRepairModalOpen}
+        onClose={() => {
+          setEditRepairModalOpen(false);
+          setRepairToEdit(null);
+        }}
+        repairBatch={repairToEdit}
+        onSaved={() => {
+          fetchRepairJobs();
+          fetchDefectiveInventory();
+        }}
+      />
     </div>
   );
 };

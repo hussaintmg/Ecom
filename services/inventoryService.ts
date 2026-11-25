@@ -3335,6 +3335,364 @@ export class InventoryService {
   }
 
   /**
+   * Update a repair challan (metadata + add/swap/remove/resize items) safely.
+   * For defective-source challans, reconciles DefectiveInventory available/repairing balances.
+   */
+  static async updateRepairBatch(
+    invoiceNoOrKey: string,
+    input: {
+      customerName?: string;
+      customerPhone?: string;
+      customerAddress?: string;
+      technicianOrVendor?: string;
+      vendorPhone?: string;
+      vendorAddress?: string;
+      expectedReturnDate?: string | null;
+      notes?: string;
+      items?: Array<{
+        repairJobId?: string;
+        productId: string;
+        defectiveId?: string;
+        quantity: number;
+        estimatedCost?: number;
+        actualCost?: number;
+        problemDescription?: string;
+        notes?: string;
+      }>;
+    },
+    userId?: string
+  ) {
+    await connectDB();
+    ensureModels();
+
+    const isLegacy = invoiceNoOrKey.startsWith("REP-LEGACY-");
+    const jobs = isLegacy
+      ? await RepairJob.find({ _id: invoiceNoOrKey.replace("REP-LEGACY-", "") })
+      : await RepairJob.find({ repairInvoiceNo: invoiceNoOrKey });
+
+    if (!jobs || jobs.length === 0) {
+      throw new Error(`Repair challan not found: ${invoiceNoOrKey}`);
+    }
+
+    const firstJob = jobs[0];
+    const repairSource = firstJob.repairSource === "customer" ? "customer" : "defective";
+    const effectiveChallanNo = firstJob.repairInvoiceNo || invoiceNoOrKey;
+
+    const nextVendorName =
+      input.technicianOrVendor !== undefined
+        ? input.technicianOrVendor.trim()
+        : firstJob.technicianOrVendor;
+    const nextVendorPhone =
+      input.vendorPhone !== undefined ? input.vendorPhone.trim() : firstJob.vendorPhone;
+    const nextVendorAddress =
+      input.vendorAddress !== undefined ? input.vendorAddress.trim() : firstJob.vendorAddress;
+    const nextCustomerName =
+      input.customerName !== undefined ? input.customerName.trim() : firstJob.customerName;
+    const nextCustomerPhone =
+      input.customerPhone !== undefined ? input.customerPhone.trim() : firstJob.customerPhone;
+    const nextCustomerAddress =
+      input.customerAddress !== undefined
+        ? input.customerAddress.trim()
+        : firstJob.customerAddress;
+    const nextExpectedReturn =
+      input.expectedReturnDate !== undefined
+        ? input.expectedReturnDate
+          ? new Date(input.expectedReturnDate)
+          : null
+        : firstJob.expectedReturnDate;
+
+    // If items are not provided, update shared metadata on all jobs in challan
+    if (!Array.isArray(input.items)) {
+      for (const j of jobs) {
+        j.technicianOrVendor = nextVendorName;
+        j.vendorPhone = nextVendorPhone;
+        j.vendorAddress = nextVendorAddress;
+        j.customerName = nextCustomerName;
+        j.customerPhone = nextCustomerPhone;
+        j.customerAddress = nextCustomerAddress;
+        j.expectedReturnDate = nextExpectedReturn;
+        if (input.notes !== undefined) j.notes = input.notes.trim();
+        await j.save();
+      }
+      return { success: true, repairInvoiceNo: effectiveChallanNo };
+    }
+
+    if (input.items.length === 0) {
+      throw new Error("Repair challan must contain at least one product item.");
+    }
+
+    const existingJobMap = new Map<string, any>();
+    for (const j of jobs) {
+      existingJobMap.set(j._id.toString(), j);
+    }
+
+    const keptJobIds = new Set<string>();
+    const defDeltaMap = new Map<string, number>();
+
+    // Pre-validate quantities, processed floors, and product existence
+    const parsedItems: Array<{
+      existingJob: any | null;
+      product: any;
+      defectiveId: string | null;
+      quantity: number;
+      estimatedCost: number;
+      actualCost: number;
+      problemDescription: string;
+      notes: string;
+    }> = [];
+
+    for (const raw of input.items) {
+      const qty = Number(raw.quantity);
+      if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+        throw new Error("Repair item quantity must be a positive whole number.");
+      }
+      const estCost = Math.max(0, Number(raw.estimatedCost || 0));
+      const actCost = Math.max(0, Number(raw.actualCost || 0));
+
+      const existing = raw.repairJobId ? existingJobMap.get(String(raw.repairJobId)) : null;
+      let pid = String(raw.productId || "").trim();
+      let defId = raw.defectiveId ? String(raw.defectiveId).trim() : null;
+
+      if (existing) {
+        keptJobIds.add(existing._id.toString());
+        const doneQty = Number(existing.quantityRepaired || 0) + Number(existing.quantityFailed || 0);
+        if (doneQty > 0 && pid && pid !== String(existing.product)) {
+          throw new Error("Cannot change product on an item that already has completed/failed units.");
+        }
+        if (qty < doneQty) {
+          throw new Error(
+            `Quantity cannot be less than already repaired/failed units (${doneQty}).`
+          );
+        }
+        if (repairSource === "defective" && !defId) {
+          defId = existing.defectiveInventory ? String(existing.defectiveInventory) : null;
+        }
+      }
+
+      if (repairSource === "defective" && defId) {
+        const defDoc = await DefectiveInventory.findById(defId);
+        if (!defDoc) {
+          throw new Error(`Defective inventory record not found (${defId}).`);
+        }
+        pid = defDoc.product.toString();
+      } else if (repairSource === "defective" && !defId) {
+        throw new Error("Defective batch selection is required for Store Defective Repair.");
+      }
+
+      const prodDoc = await Product.findById(pid);
+      if (!prodDoc) {
+        throw new Error(`Product not found (${pid}).`);
+      }
+
+      parsedItems.push({
+        existingJob: existing,
+        product: prodDoc,
+        defectiveId: defId,
+        quantity: qty,
+        estimatedCost: estCost,
+        actualCost: actCost,
+        problemDescription: (raw.problemDescription || "").trim(),
+        notes: (raw.notes || "").trim(),
+      });
+    }
+
+    // Ensure no already-processed job was removed
+    for (const [jid, j] of existingJobMap.entries()) {
+      if (!keptJobIds.has(jid)) {
+        const doneQty = Number(j.quantityRepaired || 0) + Number(j.quantityFailed || 0);
+        if (doneQty > 0) {
+          throw new Error("Cannot remove a repair item that already has repaired/failed units.");
+        }
+      }
+    }
+
+    // Compute DefectiveInventory net quantity deltas for "defective" source challans
+    if (repairSource === "defective") {
+      for (const j of jobs) {
+        if (j.defectiveInventory) {
+          const dId = j.defectiveInventory.toString();
+          const remainingInRepair = Math.max(
+            0,
+            Number(j.quantity || 0) - Number(j.quantityRepaired || 0) - Number(j.quantityFailed || 0)
+          );
+          defDeltaMap.set(dId, (defDeltaMap.get(dId) || 0) - remainingInRepair);
+        }
+      }
+      for (const item of parsedItems) {
+        if (item.defectiveId) {
+          const doneQty = item.existingJob
+            ? Number(item.existingJob.quantityRepaired || 0) +
+              Number(item.existingJob.quantityFailed || 0)
+            : 0;
+          const nextInRepair = Math.max(0, item.quantity - doneQty);
+          defDeltaMap.set(item.defectiveId, (defDeltaMap.get(item.defectiveId) || 0) + nextInRepair);
+        }
+      }
+
+      // Check availability before applying
+      for (const [dId, delta] of defDeltaMap.entries()) {
+        if (delta > 0) {
+          const defDoc = await DefectiveInventory.findById(dId);
+          if (!defDoc || defDoc.availableDefectiveQuantity < delta) {
+            throw new Error(
+              `Insufficient defective stock for batch ${dId}. Need ${delta} more unit(s), available: ${
+                defDoc?.availableDefectiveQuantity ?? 0
+              }.`
+            );
+          }
+        }
+      }
+
+      // Apply DefectiveInventory deltas
+      for (const [dId, delta] of defDeltaMap.entries()) {
+        if (delta === 0) continue;
+        const defDoc = await DefectiveInventory.findById(dId);
+        if (!defDoc) continue;
+        defDoc.availableDefectiveQuantity = Math.max(0, defDoc.availableDefectiveQuantity - delta);
+        defDoc.quantityRepairing = Math.max(0, defDoc.quantityRepairing + delta);
+        if (defDoc.quantityRepairing === 0 && defDoc.availableDefectiveQuantity > 0) {
+          defDoc.status = "Awaiting Decision";
+        } else if (defDoc.quantityRepairing > 0 && defDoc.availableDefectiveQuantity === 0) {
+          defDoc.status = "In Repair";
+        } else if (defDoc.quantityRepairing > 0) {
+          defDoc.status = "Partially In Repair";
+        }
+        await defDoc.save();
+
+        const pDoc = await Product.findById(defDoc.product);
+        await StockLog.create({
+          product: defDoc.product,
+          change: 0,
+          previousStock: pDoc?.stock || 0,
+          resultingStock: pDoc?.stock || 0,
+          quantity: Math.abs(delta),
+          movementType: "adjustment",
+          defectiveId: defDoc._id,
+          performedBy: userId || null,
+          description: `Repair Challan Updated (${effectiveChallanNo}): defective quantity in repair ${
+            delta > 0 ? `+${delta}` : `${delta}`
+          }`,
+        });
+      }
+    }
+
+    // Delete removed jobs
+    for (const [jid, j] of existingJobMap.entries()) {
+      if (!keptJobIds.has(jid)) {
+        await RepairJob.findByIdAndDelete(jid);
+      }
+    }
+
+    // Update or create jobs and build invoiceProducts
+    const invoiceProducts: any[] = [];
+    let totalEstimated = 0;
+
+    for (const item of parsedItems) {
+      let jobDoc = item.existingJob;
+      if (jobDoc) {
+        jobDoc.product = item.product._id;
+        jobDoc.defectiveInventory = item.defectiveId || null;
+        jobDoc.quantity = item.quantity;
+        jobDoc.estimatedCost = item.estimatedCost;
+        jobDoc.actualCost = item.actualCost;
+        jobDoc.problemDescription = item.problemDescription;
+        jobDoc.notes = item.notes || (input.notes !== undefined ? input.notes.trim() : jobDoc.notes);
+        jobDoc.technicianOrVendor = nextVendorName;
+        jobDoc.vendorPhone = nextVendorPhone;
+        jobDoc.vendorAddress = nextVendorAddress;
+        jobDoc.customerName = nextCustomerName;
+        jobDoc.customerPhone = nextCustomerPhone;
+        jobDoc.customerAddress = nextCustomerAddress;
+        jobDoc.expectedReturnDate = nextExpectedReturn;
+
+        const doneQty = Number(jobDoc.quantityRepaired || 0) + Number(jobDoc.quantityFailed || 0);
+        if (doneQty < item.quantity) {
+          jobDoc.status = "In Progress";
+        } else if (Number(jobDoc.quantityRepaired || 0) === item.quantity) {
+          jobDoc.status = "Successfully Repaired";
+        } else if (Number(jobDoc.quantityFailed || 0) === item.quantity) {
+          jobDoc.status = "Failed";
+        } else {
+          jobDoc.status = "Partially Repaired";
+        }
+        await jobDoc.save();
+      } else {
+        jobDoc = await RepairJob.create({
+          defectiveInventory: item.defectiveId || undefined,
+          product: item.product._id,
+          quantity: item.quantity,
+          repairSource,
+          technicianOrVendor:
+            nextVendorName || (repairSource === "customer" ? "Customer Service" : "Vendor"),
+          repairInvoiceNo: firstJob.repairInvoiceNo || effectiveChallanNo,
+          vendorPhone: nextVendorPhone || "",
+          vendorAddress: nextVendorAddress || "",
+          customerName: nextCustomerName || "",
+          customerPhone: nextCustomerPhone || "",
+          customerAddress: nextCustomerAddress || "",
+          estimatedCost: item.estimatedCost,
+          actualCost: item.actualCost,
+          startDate: firstJob.startDate || new Date(),
+          expectedReturnDate: nextExpectedReturn,
+          problemDescription: item.problemDescription,
+          notes: item.notes || (input.notes !== undefined ? input.notes.trim() : ""),
+          status: "In Progress",
+        });
+      }
+
+      let catId = item.product.category;
+      if (!catId) {
+        const fallbackCat = await Category.findOne();
+        catId = fallbackCat?._id;
+      }
+
+      invoiceProducts.push({
+        product: item.product._id,
+        category: catId,
+        quantity: item.quantity,
+        salePrice: item.estimatedCost,
+        description: item.problemDescription || item.notes || "Repair Item",
+      });
+
+      totalEstimated += item.estimatedCost * item.quantity;
+    }
+
+    // Keep linked Repair Invoice synced if found
+    const billCustomerName =
+      repairSource === "customer"
+        ? nextCustomerName || nextVendorName || "Valued Customer"
+        : nextVendorName || "Repair Vendor";
+    const billCustomerPhone =
+      repairSource === "customer" ? nextCustomerPhone || nextVendorPhone || "" : nextVendorPhone || "";
+    const billCustomerAddress =
+      repairSource === "customer"
+        ? nextCustomerAddress || nextVendorAddress || ""
+        : nextVendorAddress || "";
+
+    if (firstJob.repairInvoiceNo) {
+      const escapedChallan = firstJob.repairInvoiceNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const linkedInvoice = await Invoice.findOne({
+        type: "Repair",
+        customerNote: { $regex: escapedChallan },
+      });
+      if (linkedInvoice) {
+        linkedInvoice.customerName = billCustomerName;
+        linkedInvoice.customerPhone = billCustomerPhone;
+        linkedInvoice.customerAddress = billCustomerAddress;
+        linkedInvoice.products = invoiceProducts;
+        linkedInvoice.totalAmount = totalEstimated;
+        await linkedInvoice.save();
+      }
+    }
+
+    return {
+      success: true,
+      repairInvoiceNo: effectiveChallanNo,
+      message: "Repair challan updated successfully.",
+    };
+  }
+
+  /**
    * Database Migration & Integrity Fix Helper (backward compatible wrapper).
    */
   static async syncAndFixRepairData() {

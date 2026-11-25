@@ -268,9 +268,7 @@ export const InvoiceProvider = ({
         const result = await res.json();
         if (res.ok && result.success) {
           toast.success("Invoice updated successfully");
-          setInvoices((prev) =>
-            prev.map((inv) => (inv._id === id ? { ...inv, ...result.invoice } : inv))
-          );
+          await fetchInvoices(currentPage, searchQuery);
           return { success: true };
         } else {
           const errMsg = result.error || "Failed to update invoice";
@@ -282,7 +280,7 @@ export const InvoiceProvider = ({
         return { success: false, error: err.message };
       }
     },
-    []
+    [currentPage, searchQuery, fetchInvoices]
   );
 
   const deleteInvoice = useCallback(

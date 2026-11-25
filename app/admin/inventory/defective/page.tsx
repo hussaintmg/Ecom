@@ -3289,7 +3289,7 @@ export const DefectiveInventoryContent = ({ basePath = "/admin" }: { basePath?: 
                   type="submit"
                   size="sm"
                   disabled={submittingEditDefective}
-                  className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
+                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm active:scale-[0.98] transition-all"
                 >
                   {submittingEditDefective ? (
                     <RefreshCw size={14} className="animate-spin" />

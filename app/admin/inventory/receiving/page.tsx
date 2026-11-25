@@ -899,11 +899,11 @@ export const StockReceivingContent = ({ basePath = "/admin" }: { basePath?: stri
                         setReceiptToEdit(r);
                         setEditReceiptModalOpen(true);
                       }}
-                      className="w-9 h-9 flex items-center justify-center rounded-xl border border-white/10 bg-neutral-800/80 text-neutral-300 hover:text-white hover:bg-neutral-700 hover:border-cyan-500/50 transition-all duration-200 active:scale-95 cursor-pointer"
-                      title="Edit shipment details"
-                      aria-label="Edit shipment details"
+                      className="w-9 h-9 flex items-center justify-center rounded-xl border border-border bg-background text-foreground hover:bg-amber-50 hover:text-amber-700 hover:border-amber-500/40 transition-all duration-200 shadow-2xs active:scale-95 cursor-pointer group"
+                      title="Edit shipment details & items"
+                      aria-label="Edit shipment details & items"
                     >
-                      <Edit2 size={16} />
+                      <Edit2 size={16} className="transition-transform duration-200 group-hover:scale-110" />
                     </button>
 
                     <button

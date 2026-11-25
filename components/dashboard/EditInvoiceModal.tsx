@@ -1,9 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/components/ui/Button";
+import { LightModalShell } from "@/components/dashboard/LightModalShell";
 import {
-  X,
+  EditModalProductPicker,
+  CatalogProductOption,
+} from "@/components/dashboard/EditModalProductPicker";
+import {
   User,
   Phone,
   Mail,
@@ -14,6 +19,9 @@ import {
   Save,
   AlertTriangle,
   RefreshCw,
+  Trash2,
+  ArrowLeftRight,
+  ReceiptText,
 } from "lucide-react";
 import { InvoiceItem } from "@/context/InvoiceContext";
 import toast from "@/utils/toast";
@@ -36,6 +44,21 @@ interface EditInvoiceModalProps {
   ) => Promise<{ success: boolean; error?: string }>;
 }
 
+interface EditableInvoiceRow {
+  rowKey: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  availableStock: number;
+  originalQty: number;
+  categoryId: string;
+  categoryName: string;
+  quantity: number;
+  salePrice: number;
+  unitPrice: number;
+  description: string;
+}
+
 export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   isOpen,
   onClose,
@@ -48,7 +71,8 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerCity, setCustomerCity] = useState("");
   const [customerNote, setCustomerNote] = useState("");
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<EditableInvoiceRow[]>([]);
+  const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -59,6 +83,7 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
       setCustomerAddress(invoice.customerAddress || "");
       setCustomerCity(invoice.customerCity || "");
       setCustomerNote(invoice.customerNote || "");
+      setSwappingIndex(null);
 
       const rawItems =
         invoice.products && invoice.products.length > 0
@@ -74,44 +99,49 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
             ];
 
       setProducts(
-        rawItems.map((p: any) => ({
-          productId: p.product?._id || p.product,
-          productName: p.product?.name || "Product",
-          productImage:
-            p.product?.images?.[0]?.url ||
-            (typeof p.product?.images?.[0] === "string" ? p.product?.images?.[0] : ""),
-          categoryId: p.category?._id || p.category,
-          categoryName: p.category?.name || "Category",
-          quantity: Number(p.quantity || 1),
-          salePrice: Number(p.salePrice || 0),
-          unitPrice: Math.round(Number(p.salePrice || 0) / Math.max(1, Number(p.quantity || 1))),
-          description: p.description || "",
-        }))
+        rawItems.map((p: any, idx: number) => {
+          const qty = Math.max(1, Number(p.quantity || 1));
+          const salePrice = Number(p.salePrice || 0);
+          return {
+            rowKey: `${p.product?._id || p.product || "row"}-${idx}-${Date.now()}`,
+            productId: String(p.product?._id || p.product || ""),
+            productName: p.product?.name || "Deleted Product",
+            productImage:
+              p.product?.images?.[0]?.url ||
+              (typeof p.product?.images?.[0] === "string" ? p.product?.images?.[0] : ""),
+            availableStock: Number(p.product?.stock ?? 0),
+            originalQty: qty,
+            categoryId: String(p.category?._id || p.category || ""),
+            categoryName: p.category?.name || "Category",
+            quantity: qty,
+            salePrice,
+            unitPrice: Math.round(salePrice / qty),
+            description: p.description || "",
+          };
+        })
       );
     }
   }, [invoice, isOpen]);
 
-  if (!isOpen || !invoice) return null;
-
   const handleQuantityChange = (index: number, newQty: number) => {
-    if (newQty < 1) return;
+    const safeQty = Math.max(1, Math.floor(newQty || 1));
     setProducts((prev) => {
       const copy = [...prev];
       const item = { ...copy[index] };
-      item.quantity = newQty;
-      item.salePrice = item.unitPrice * newQty;
+      item.quantity = safeQty;
+      item.salePrice = Math.max(0, Math.round(item.unitPrice * safeQty));
       copy[index] = item;
       return copy;
     });
   };
 
   const handleSalePriceChange = (index: number, newPrice: number) => {
-    if (newPrice < 0) return;
+    const safePrice = Math.max(0, Number(newPrice || 0));
     setProducts((prev) => {
       const copy = [...prev];
       const item = { ...copy[index] };
-      item.salePrice = newPrice;
-      item.unitPrice = Math.round(newPrice / Math.max(1, item.quantity));
+      item.salePrice = safePrice;
+      item.unitPrice = Math.round(safePrice / Math.max(1, item.quantity));
       copy[index] = item;
       return copy;
     });
@@ -125,12 +155,97 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
     });
   };
 
+  const handleSwapProduct = (index: number, newProd: CatalogProductOption) => {
+    const unitPrice = Number(newProd.price || 0);
+    const imgUrl =
+      typeof newProd.images?.[0] === "string"
+        ? newProd.images[0]
+        : newProd.images?.[0]?.url || "";
+    const catId = typeof newProd.category === "object" ? newProd.category?._id || "" : String(newProd.category || "");
+    const catName = typeof newProd.category === "object" ? newProd.category?.name || "Category" : "Category";
+
+    setProducts((prev) => {
+      const copy = [...prev];
+      const existingQty = copy[index].quantity || 1;
+      copy[index] = {
+        ...copy[index],
+        productId: newProd._id,
+        productName: newProd.name,
+        productImage: imgUrl,
+        availableStock: Number(newProd.stock ?? 0),
+        originalQty: 0, // Brand-new product on this row
+        categoryId: catId,
+        categoryName: catName,
+        unitPrice,
+        salePrice: unitPrice * existingQty,
+      };
+      return copy;
+    });
+    setSwappingIndex(null);
+  };
+
+  const handleAddProduct = (newProd: CatalogProductOption) => {
+    const unitPrice = Number(newProd.price || 0);
+    const imgUrl =
+      typeof newProd.images?.[0] === "string"
+        ? newProd.images[0]
+        : newProd.images?.[0]?.url || "";
+    const catId = typeof newProd.category === "object" ? newProd.category?._id || "" : String(newProd.category || "");
+    const catName = typeof newProd.category === "object" ? newProd.category?.name || "Category" : "Category";
+
+    setProducts((prev) => {
+      const existingIdx = prev.findIndex((row) => row.productId === newProd._id);
+      if (existingIdx !== -1) {
+        const copy = [...prev];
+        const target = { ...copy[existingIdx] };
+        target.quantity += 1;
+        target.salePrice = target.unitPrice * target.quantity;
+        copy[existingIdx] = target;
+        toast.success(`Increased quantity for ${newProd.name}`);
+        return copy;
+      }
+
+      return [
+        ...prev,
+        {
+          rowKey: `${newProd._id}-${Date.now()}`,
+          productId: newProd._id,
+          productName: newProd.name,
+          productImage: imgUrl,
+          availableStock: Number(newProd.stock ?? 0),
+          originalQty: 0,
+          categoryId: catId,
+          categoryName: catName,
+          quantity: 1,
+          unitPrice,
+          salePrice: unitPrice,
+          description: "",
+        },
+      ];
+    });
+  };
+
+  const handleRemoveProduct = (index: number) => {
+    if (products.length <= 1) {
+      toast.error("An invoice must have at least one product item.");
+      return;
+    }
+    setProducts((prev) => prev.filter((_, i) => i !== index));
+    if (swappingIndex === index) setSwappingIndex(null);
+  };
+
   const calculatedTotal = products.reduce((acc, p) => acc + (Number(p.salePrice) || 0), 0);
+  const totalUnits = products.reduce((acc, p) => acc + (Number(p.quantity) || 0), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!invoice) return;
     if (!customerName.trim()) {
       toast.error("Customer name is required.");
+      return;
+    }
+    if (products.length === 0) {
+      toast.error("Please add at least one product.");
       return;
     }
 
@@ -145,7 +260,7 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
         customerNote: customerNote.trim(),
         products: products.map((p) => ({
           productId: p.productId,
-          categoryId: p.categoryId,
+          categoryId: p.categoryId || undefined,
           quantity: p.quantity,
           salePrice: p.salePrice,
           description: p.description,
@@ -161,117 +276,115 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-      <div className="bg-neutral-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden text-neutral-100 animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
-          <div>
-            <h3 className="text-lg font-black text-white flex items-center gap-2">
-              <Package size={20} className="text-primary" />
-              Edit Invoice #{invoice._id.slice(-6).toUpperCase()}
-            </h3>
-            <p className="text-xs text-neutral-400 mt-0.5">
-              Type: <span className="font-semibold text-emerald-400">{invoice.type || "Sell"}</span> • Created:{" "}
-              {new Date(invoice.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <X size={18} />
-          </button>
-        </div>
+  const isSellInvoice = (invoice?.type || "Sell") === "Sell";
 
-        {/* Scrollable Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto py-4 space-y-6 pr-1">
+  return (
+    <LightModalShell
+      isOpen={isOpen && !!invoice}
+      onClose={onClose}
+      icon={<ReceiptText size={20} />}
+      title={invoice ? `Edit Invoice #${invoice._id.slice(-6).toUpperCase()}` : "Edit Invoice"}
+      subtitle={
+        invoice ? (
+          <span>
+            Type:{" "}
+            <strong className={isSellInvoice ? "text-emerald-600" : "text-amber-600"}>
+              {invoice.type || "Sell"}
+            </strong>{" "}
+            • Created: {new Date(invoice.createdAt).toLocaleDateString()}
+          </span>
+        ) : undefined
+      }
+      maxWidthClass="max-w-3xl"
+    >
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-5">
           {/* Customer Details Section */}
           <div className="space-y-3">
-            <h4 className="text-xs font-black uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
-              <User size={14} /> Customer Information
+            <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <User size={13} className="text-emerald-600" /> Customer Information
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-bold text-neutral-300">Customer Name *</label>
+                <label className="text-[11px] font-bold text-foreground">Customer Name *</label>
                 <div className="relative mt-1">
-                  <User size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <User size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="text"
                     required
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="Full name"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-neutral-300">Phone Number</label>
+                <label className="text-[11px] font-bold text-foreground">Phone Number</label>
                 <div className="relative mt-1">
-                  <Phone size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <Phone size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="Phone number"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-neutral-300">Email Address</label>
+                <label className="text-[11px] font-bold text-foreground">Email Address</label>
                 <div className="relative mt-1">
-                  <Mail size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <Mail size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="email"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="email@example.com"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-neutral-300">City</label>
+                <label className="text-[11px] font-bold text-foreground">City</label>
                 <div className="relative mt-1">
-                  <Building2 size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <Building2 size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={customerCity}
                     onChange={(e) => setCustomerCity(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="e.g. Lahore, Karachi"
                   />
                 </div>
               </div>
 
               <div className="sm:col-span-2">
-                <label className="text-[11px] font-bold text-neutral-300">Delivery Address</label>
+                <label className="text-[11px] font-bold text-foreground">Delivery Address</label>
                 <div className="relative mt-1">
-                  <MapPin size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <MapPin size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={customerAddress}
                     onChange={(e) => setCustomerAddress(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="Full street address"
                   />
                 </div>
               </div>
 
               <div className="sm:col-span-2">
-                <label className="text-[11px] font-bold text-neutral-300">Customer Note</label>
+                <label className="text-[11px] font-bold text-foreground">Customer Note</label>
                 <div className="relative mt-1">
-                  <StickyNote size={14} className="absolute left-3 top-2.5 text-neutral-500" />
+                  <StickyNote size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
                   <input
                     type="text"
                     value={customerNote}
                     onChange={(e) => setCustomerNote(e.target.value)}
-                    className="w-full bg-neutral-950/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
                     placeholder="Special instructions or notes"
                   />
                 </div>
@@ -280,133 +393,194 @@ export const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
           </div>
 
           {/* Line Items Section */}
-          <div className="space-y-3 pt-2 border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
-                <Package size={14} /> Line Items & Pricing
+          <div className="space-y-3 pt-3 border-t border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Package size={13} className="text-emerald-600" /> Products & Quantities ({products.length} items • {totalUnits} units)
               </h4>
-              <span className="text-[11px] text-neutral-400">
-                Total Items: <strong className="text-white">{products.length}</strong>
-              </span>
+              <EditModalProductPicker
+                onSelect={handleAddProduct}
+                buttonLabel="Add Product"
+                requireStock={isSellInvoice}
+                excludeIds={products.map((p) => p.productId)}
+              />
             </div>
 
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 flex items-start gap-2.5 text-amber-300 text-xs">
-              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2.5 text-amber-800 text-xs dark:bg-amber-500/10 dark:border-amber-500/25 dark:text-amber-300">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-600" />
               <p>
-                <strong>Inventory Note:</strong> Modifying quantities on a Sell invoice will automatically
-                reconcile product warehouse stock (deducting or returning stock) and create audit logs.
+                <strong>Automatic Stock Reconciliation:</strong> Replacing, removing, or changing
+                quantities on Sell invoices automatically restores old product stock and adjusts new
+                warehouse stock with audit logs.
               </p>
             </div>
 
-            <div className="space-y-3">
-              {products.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-neutral-950/60 border border-white/10 rounded-2xl p-3 space-y-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {item.productImage ? (
-                      <img
-                        src={item.productImage}
-                        alt={item.productName}
-                        className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center text-xs font-bold shrink-0">
-                        PROD
+            <AnimatePresence initial={false}>
+              <div className="space-y-2.5">
+                {products.map((item, idx) => (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96 }}
+                    transition={{ duration: 0.16 }}
+                    key={item.rowKey}
+                    className="bg-muted/35 border border-border rounded-2xl p-3.5 space-y-3 hover:border-emerald-500/30 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {item.productImage ? (
+                          <img
+                            src={item.productImage}
+                            alt={item.productName}
+                            className="w-10 h-10 rounded-xl object-cover border border-border shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
+                            <Package size={16} />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-foreground truncate">{item.productName}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {item.categoryName} • Warehouse Stock:{" "}
+                            <strong className="text-foreground">{item.availableStock}</strong>
+                          </p>
+                        </div>
                       </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-white truncate">{item.productName}</p>
-                      <p className="text-[10px] text-neutral-400 truncate">{item.categoryName}</p>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-neutral-400">Quantity</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => handleQuantityChange(idx, parseInt(e.target.value, 10) || 1)}
-                        className="w-full bg-neutral-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white mt-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-neutral-400">Total Price (PKR)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.salePrice}
-                        onChange={(e) => handleSalePriceChange(idx, parseFloat(e.target.value) || 0)}
-                        className="w-full bg-neutral-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-emerald-400 font-bold mt-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-
-                    <div className="col-span-2 sm:col-span-1">
-                      <label className="text-[10px] font-bold text-neutral-400">Unit Price</label>
-                      <div className="text-xs font-mono py-1.5 text-neutral-300">
-                        Rs. {(item.unitPrice || 0).toLocaleString()}
+                      {/* Row Actions: Swap Product & Remove */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSwappingIndex(swappingIndex === idx ? null : idx)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all active:scale-95 cursor-pointer ${
+                            swappingIndex === idx
+                              ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                              : "border-border bg-background text-foreground hover:bg-muted"
+                          }`}
+                          title="Replace with another product"
+                        >
+                          <ArrowLeftRight size={12} />
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProduct(idx)}
+                          className="w-8 h-8 inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all active:scale-95 cursor-pointer dark:bg-red-500/10 dark:border-red-500/30 dark:text-red-400"
+                          title="Remove item"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
 
-                    <div className="col-span-2 sm:col-span-3">
-                      <label className="text-[10px] font-bold text-neutral-400">Description / Serial</label>
-                      <input
-                        type="text"
-                        value={item.description}
-                        onChange={(e) => handleDescriptionChange(idx, e.target.value)}
-                        placeholder="Item notes, serial number, condition"
-                        className="w-full bg-neutral-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white mt-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
+                    {/* Inline Swap Picker */}
+                    <AnimatePresence>
+                      {swappingIndex === idx && (
+                        <EditModalProductPicker
+                          autoOpen
+                          compact
+                          requireStock={isSellInvoice}
+                          placeholder={`Replace "${item.productName}" with...`}
+                          onSelect={(newProd) => handleSwapProduct(idx, newProd)}
+                          onCancel={() => setSwappingIndex(null)}
+                        />
+                      )}
+                    </AnimatePresence>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground">Quantity *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={item.quantity}
+                          onChange={(e) => handleQuantityChange(idx, parseInt(e.target.value, 10) || 1)}
+                          className="w-full bg-background border border-input rounded-xl px-3 py-1.5 text-xs font-bold text-foreground mt-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground">Line Total (PKR) *</label>
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={item.salePrice}
+                          onChange={(e) => handleSalePriceChange(idx, parseFloat(e.target.value) || 0)}
+                          className="w-full bg-background border border-input rounded-xl px-3 py-1.5 text-xs text-emerald-700 font-black mt-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 dark:text-emerald-400"
+                        />
+                      </div>
+
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="text-[10px] font-bold text-muted-foreground">Unit Rate</label>
+                        <div className="text-xs font-mono font-bold py-2 px-2.5 rounded-xl bg-background border border-border/70 text-foreground mt-0.5">
+                          Rs. {(item.unitPrice || 0).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="col-span-2 sm:col-span-3">
+                        <label className="text-[10px] font-bold text-muted-foreground">Description / Serial</label>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => handleDescriptionChange(idx, e.target.value)}
+                          placeholder="Item notes, serial number, condition"
+                          className="w-full bg-background border border-input rounded-xl px-3 py-1.5 text-xs text-foreground mt-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500"
+                        />
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  </motion.div>
+                ))}
+              </div>
+            </AnimatePresence>
           </div>
+        </div>
 
-          {/* Total Summary */}
-          <div className="p-4 rounded-2xl bg-neutral-950 border border-white/10 flex items-center justify-between">
-            <span className="text-xs font-bold text-neutral-400">Grand Total:</span>
-            <span className="text-lg font-black text-emerald-400 font-mono">
-              Rs. {calculatedTotal.toLocaleString()}
+        {/* Sticky Footer & Totals */}
+        <div className="px-5 sm:px-6 py-4 border-t border-border bg-muted/25 space-y-3 shrink-0">
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between dark:bg-emerald-500/10 dark:border-emerald-500/25">
+            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+              Updated Grand Total ({totalUnits} units):
+            </span>
+            <span className="text-lg font-black text-emerald-700 dark:text-emerald-400 font-mono">
+              PKR {calculatedTotal.toLocaleString()}
             </span>
           </div>
 
-          {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+          <div className="flex items-center justify-end gap-2.5">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={onClose}
               disabled={isSaving}
-              className="text-neutral-300 hover:text-white"
+              className="h-9 px-4 rounded-xl border-border text-foreground font-bold hover:bg-muted"
             >
               Cancel
             </Button>
-            <Button
+            <button
               type="submit"
-              size="sm"
               disabled={isSaving}
-              className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20"
+              className="h-9 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm shadow-emerald-600/20 disabled:opacity-50 transition-all cursor-pointer"
             >
               {isSaving ? (
                 <>
-                  <RefreshCw size={14} className="animate-spin" /> Saving Changes...
+                  <RefreshCw size={14} className="animate-spin" />
+                  <span>Saving Changes...</span>
                 </>
               ) : (
                 <>
-                  <Save size={14} /> Save Changes
+                  <Save size={14} />
+                  <span>Save Invoice</span>
                 </>
               )}
-            </Button>
+            </button>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </form>
+    </LightModalShell>
   );
 };
